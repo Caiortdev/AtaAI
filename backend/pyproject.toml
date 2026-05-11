@@ -1,0 +1,25 @@
+[project]
+name = "ata-reuniao-backend"
+version = "0.1.0"
+description = "Backend FastAPI do MVP de geracao de atas de reuniao por IA."
+requires-python = ">=3.11,<3.15"
+dependencies = [
+  "fastapi>=0.115.0",
+  "httpx>=0.27.0",
+  "uvicorn[standard]>=0.30.0",
+  "python-multipart>=0.0.9",
+  "pydantic-settings>=2.4.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3.0",
+  "ruff>=0.6.0"
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

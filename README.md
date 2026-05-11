@@ -1,0 +1,97 @@
+# Gerador de Ata de Reuniao por IA
+
+MVP para capturar reunioes com clientes, processar audio/video, gerar transcricao, ata estruturada e tarefas priorizadas.
+
+## Stack inicial
+
+- Frontend: React, TypeScript, Vite, Tailwind CSS, TanStack Query e Zustand.
+- Desktop futuro: Tauri usando o mesmo frontend React.
+- Mobile inicial: PWA; empacotamento futuro com Capacitor.
+- Backend: Python, FastAPI e Pydantic.
+- Processamento futuro: Redis, Celery e FFmpeg.
+- Banco futuro: PostgreSQL.
+- Armazenamento futuro: storage S3-compatible.
+
+## Estrutura
+
+```text
+backend/   API FastAPI e pipeline de processamento
+frontend/  App React do MVP
+docs/      Documentacao organizada do projeto
+```
+
+## Documentacao por fases
+
+Os documentos principais ficam em [docs/README.md](docs/README.md).
+
+Eles explicam o projeto em linguagem simples, com status, objetivo, entregas, forma de testar, stack, produto e proximos passos de cada fase.
+
+## Como rodar em desenvolvimento
+
+### Backend
+
+```powershell
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
+
+```powershell
+cd frontend
+npm.cmd install
+npm.cmd run dev
+```
+
+O frontend espera a API em `http://127.0.0.1:8000`.
+
+## Estado atual
+
+Esta primeira base ja inclui:
+
+- criacao e listagem de reunioes;
+- upload de arquivo;
+- aviso de consentimento;
+- validacao de formato e tamanho do arquivo;
+- preparacao real de audio via FFmpeg/FFprobe quando os binarios estiverem configurados;
+- falha amigavel quando FFmpeg/FFprobe nao estao disponiveis;
+- transcricao real plugavel via OpenAI quando `OPENAI_API_KEY` estiver configurada;
+- transcricao mock para testes automatizados;
+- analise/geracao da ata ainda simulada;
+- geracao de ata e tarefas a partir de um pipeline plugavel;
+- tela inicial do MVP em React.
+
+Os conectores reais de LLM, Redis/Celery, PostgreSQL e storage serao adicionados nas proximas etapas.
+
+## Dependencia de midia
+
+Para a Fase 1 funcionar com audio/video real, instale FFmpeg e FFprobe ou configure os caminhos no `.env` do backend:
+
+```powershell
+npm.cmd install --prefix tools
+```
+
+O backend detecta automaticamente os binarios instalados em `tools/node_modules`. Se preferir apontar manualmente:
+
+```text
+FFMPEG_BINARY=C:\caminho\para\ffmpeg.exe
+FFPROBE_BINARY=C:\caminho\para\ffprobe.exe
+```
+
+Sem essas ferramentas, o app aceita uploads validos, mas o processamento fica com status `failed` e mostra uma mensagem orientando a configuracao.
+
+## Transcricao
+
+O backend suporta transcricao por provedor configuravel:
+
+```text
+TRANSCRIPTION_PROVIDER=openai
+TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+TRANSCRIPTION_LANGUAGE=pt
+OPENAI_API_KEY=sua-chave
+```
+
+Para testes automatizados, use `TRANSCRIPTION_PROVIDER=mock`. Para transcricao real, configure `OPENAI_API_KEY`.

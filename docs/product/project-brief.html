@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <title>Projeto - Gerador de Ata de Reunião por IA</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 18mm 16mm;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #1f2933;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.48;
+      background: #ffffff;
+    }
+
+    .cover {
+      min-height: 255mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 18mm 0 10mm;
+      page-break-after: always;
+    }
+
+    .cover-mark {
+      width: 72px;
+      height: 8px;
+      background: #0f766e;
+      margin-bottom: 28mm;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      color: #111827;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: 31pt;
+      line-height: 1.08;
+      max-width: 620px;
+      margin-bottom: 8mm;
+    }
+
+    .subtitle {
+      font-size: 13pt;
+      max-width: 620px;
+      color: #4b5563;
+      margin-bottom: 10mm;
+    }
+
+    .cover-meta {
+      border-top: 1px solid #d7dde3;
+      padding-top: 8mm;
+      color: #4b5563;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6mm;
+    }
+
+    .label {
+      display: block;
+      text-transform: uppercase;
+      font-size: 7.6pt;
+      letter-spacing: .08em;
+      color: #64748b;
+      margin-bottom: 1.5mm;
+      font-weight: 700;
+    }
+
+    .value {
+      color: #111827;
+      font-size: 10.5pt;
+      font-weight: 600;
+    }
+
+    .section {
+      page-break-inside: avoid;
+      margin-bottom: 8mm;
+    }
+
+    .page-break {
+      page-break-before: always;
+    }
+
+    h2 {
+      font-size: 18pt;
+      margin: 0 0 4mm;
+      padding-bottom: 2mm;
+      border-bottom: 1px solid #d7dde3;
+    }
+
+    h3 {
+      font-size: 12.5pt;
+      margin: 5mm 0 2mm;
+    }
+
+    p {
+      margin: 0 0 3mm;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 4mm 6mm;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 1.4mm;
+      padding-left: 1mm;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 3mm 0 5mm;
+      page-break-inside: avoid;
+      font-size: 9.5pt;
+    }
+
+    th {
+      background: #eef7f6;
+      color: #134e4a;
+      font-weight: 700;
+      text-align: left;
+    }
+
+    th,
+    td {
+      border: 1px solid #d7dde3;
+      padding: 2.4mm 2.8mm;
+      vertical-align: top;
+    }
+
+    .callout {
+      border-left: 4px solid #0f766e;
+      background: #f3fbfa;
+      padding: 3.2mm 4mm;
+      margin: 3mm 0 5mm;
+      page-break-inside: avoid;
+    }
+
+    .warning {
+      border-left-color: #b45309;
+      background: #fff8ed;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4mm;
+      margin: 3mm 0 5mm;
+    }
+
+    .box {
+      border: 1px solid #d7dde3;
+      border-radius: 4px;
+      padding: 3.2mm;
+      page-break-inside: avoid;
+    }
+
+    .box-title {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #134e4a;
+      margin-bottom: 1.8mm;
+    }
+
+    .pill {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 1mm 2.2mm;
+      margin: 0 1mm 1.2mm 0;
+      font-size: 8.5pt;
+      color: #334155;
+      background: #f8fafc;
+    }
+
+    .phase {
+      border: 1px solid #cfd8df;
+      border-radius: 5px;
+      padding: 3.5mm;
+      margin-bottom: 4mm;
+      page-break-inside: avoid;
+    }
+
+    .phase h3 {
+      margin-top: 0;
+    }
+
+    .muted {
+      color: #64748b;
+    }
+
+    .small {
+      font-size: 8.8pt;
+    }
+
+    code {
+      font-family: Consolas, monospace;
+      font-size: 9pt;
+      color: #0f4f4a;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="cover">
+      <div>
+        <div class="cover-mark"></div>
+        <h1>Projeto: Gerador de Ata de Reunião por IA</h1>
+        <p class="subtitle">
+          Documento de visão, escopo, requisitos e plano de fases para um aplicativo capaz de capturar,
+          transcrever, interpretar e transformar reuniões com clientes em atas estruturadas, tarefas,
+          prioridades, responsáveis e próximos passos.
+        </p>
+        <div>
+          <span class="pill">MVP</span>
+          <span class="pill">Transcrição</span>
+          <span class="pill">Ata por preset</span>
+          <span class="pill">Tarefas priorizadas</span>
+          <span class="pill">Áudio e vídeo</span>
+          <span class="pill">React</span>
+          <span class="pill">Tauri</span>
+          <span class="pill">FastAPI</span>
+          <span class="pill">Privacidade</span>
+        </div>
+      </div>
+
+      <div class="cover-meta">
+        <div>
+          <span class="label">Versão</span>
+          <span class="value">1.0 - Documento inicial de produto</span>
+        </div>
+        <div>
+          <span class="label">Data</span>
+          <span class="value">11 de maio de 2026</span>
+        </div>
+        <div>
+          <span class="label">Público principal</span>
+          <span class="value">Profissionais que fazem reuniões com clientes</span>
+        </div>
+        <div>
+          <span class="label">Objetivo</span>
+          <span class="value">Gerar atas confiáveis e tarefas acionáveis</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>1. Resumo Executivo</h2>
+      <p>
+        A proposta é criar um aplicativo que apoia pessoas e empresas que realizam reuniões com clientes
+        e precisam transformar conversas em documentos úteis. O sistema poderá receber um arquivo de áudio
+        ou vídeo, extrair e transcrever o conteúdo falado, interpretar solicitações feitas pelo cliente e
+        produzir uma ata organizada conforme um modelo escolhido pelo usuário.
+      </p>
+      <p>
+        O diferencial central não é apenas resumir a reunião. O produto deve entender compromissos,
+        solicitações, decisões, dúvidas, impedimentos, responsáveis, prazos e níveis de prioridade conforme
+        a urgência expressa na conversa. Assim, a ata deixa de ser apenas um registro e se torna uma ponte
+        direta para execução.
+      </p>
+      <div class="callout">
+        <strong>Formulação refinada do produto:</strong> uma plataforma de geração automática de atas de
+        reunião por IA para profissionais que atendem clientes. O usuário envia um áudio ou vídeo, ou inicia
+        uma gravação ao vivo, e o sistema gera transcrição, resumo, decisões e tarefas priorizadas em um
+        modelo editável de ata.
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>2. Problema Que O Produto Resolve</h2>
+      <p>
+        Reuniões com clientes geralmente produzem muitas informações importantes, mas boa parte delas se
+        perde depois da chamada. Solicitações podem ficar implícitas, prioridades podem ser mal interpretadas
+        e tarefas podem sair sem responsável ou prazo claro. Além disso, registrar tudo manualmente consome
+        atenção de quem deveria estar conduzindo a reunião.
+      </p>
+      <h3>Dores principais</h3>
+      <ul>
+        <li>Perda de detalhes importantes após reuniões longas.</li>
+        <li>Dificuldade para separar conversa geral de solicitações reais do cliente.</li>
+        <li>Falta de clareza sobre o que é urgente, importante ou apenas uma ideia futura.</li>
+        <li>Tempo gasto escrevendo atas, resumos e follow-ups manualmente.</li>
+        <li>Risco de desalinhamento entre cliente e fornecedor sobre o que foi combinado.</li>
+        <li>Ausência de histórico pesquisável com decisões e compromissos.</li>
+      </ul>
+      <h3>Resultado esperado</h3>
+      <p>
+        Após uma reunião, o usuário deve conseguir revisar rapidamente um documento com o contexto da conversa,
+        principais pontos, decisões, tarefas e prioridades. O material deve ser bom o suficiente para ser enviado
+        ao cliente depois de uma revisão humana.
+      </p>
+    </section>
+
+    <section class="section page-break">
+      <h2>3. Usuário Principal</h2>
+      <p>
+        O usuário principal é qualquer pessoa que realiza reuniões com clientes e precisa transformar pedidos,
+        alinhamentos e decisões em tarefas executáveis. O produto deve ser pensado para um uso amplo, mas com
+        foco especial em profissionais de serviço, operação, consultoria, tecnologia, vendas complexas e gestão
+        de projetos.
+      </p>
+      <div class="grid">
+        <div class="box">
+          <div class="box-title">Consultor ou prestador de serviço</div>
+          <p>Precisa registrar solicitações do cliente, separar o que foi aprovado e organizar próximos passos.</p>
+        </div>
+        <div class="box">
+          <div class="box-title">Gestor de projeto</div>
+          <p>Precisa transformar reuniões em backlog, responsáveis, prazos, impedimentos e decisões.</p>
+        </div>
+        <div class="box">
+          <div class="box-title">Equipe comercial ou CS</div>
+          <p>Precisa entender expectativas do cliente, urgências, objeções, promessas feitas e follow-ups.</p>
+        </div>
+        <div class="box">
+          <div class="box-title">Agência ou time de produto</div>
+          <p>Precisa capturar pedidos de alteração, feedback, prioridades e riscos durante alinhamentos.</p>
+        </div>
+      </div>
+      <h3>Persona inicial recomendada para o MVP</h3>
+      <p>
+        Para evitar um produto genérico demais, o MVP deve mirar primeiro no profissional que atende clientes
+        e sai da reunião com tarefas a executar. Essa persona valoriza velocidade, clareza, priorização e um
+        documento que possa ser compartilhado com cliente ou equipe interna.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>4. Proposta De Valor</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Valor entregue</th>
+            <th>Como o app entrega</th>
+            <th>Impacto prático</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Registro confiável da reunião</td>
+            <td>Transcrição e armazenamento do conteúdo falado.</td>
+            <td>Menos perda de informação e menos retrabalho.</td>
+          </tr>
+          <tr>
+            <td>Ata pronta para revisão</td>
+            <td>Geração por modelo escolhido pelo usuário.</td>
+            <td>Redução do tempo de documentação após a reunião.</td>
+          </tr>
+          <tr>
+            <td>Tarefas acionáveis</td>
+            <td>Identificação de pedidos, responsáveis, prazos e dependências.</td>
+            <td>A reunião vira execução, não apenas texto arquivado.</td>
+          </tr>
+          <tr>
+            <td>Priorização automática</td>
+            <td>Análise de urgência, impacto, prazo e linguagem usada pelo cliente.</td>
+            <td>Ajuda a equipe a saber o que atacar primeiro.</td>
+          </tr>
+          <tr>
+            <td>Flexibilidade de entrada</td>
+            <td>Upload de áudio, upload de vídeo e, futuramente, captura ao vivo.</td>
+            <td>Funciona em vários cenários de reunião.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section page-break">
+      <h2>5. Escopo Do Produto</h2>
+      <h3>Entradas aceitas</h3>
+      <ul>
+        <li>Arquivo de áudio: <code>.mp3</code>, <code>.wav</code>, <code>.m4a</code>, <code>.ogg</code>.</li>
+        <li>Arquivo de vídeo: <code>.mp4</code>, <code>.mov</code>, <code>.webm</code>, <code>.mkv</code>.</li>
+        <li>Gravação ao vivo pelo navegador ou aplicativo, prevista em fase posterior ao MVP.</li>
+      </ul>
+      <h3>Modos de análise</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Modo</th>
+            <th>Descrição</th>
+            <th>Quando usar</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Somente áudio</td>
+            <td>O sistema extrai o áudio do vídeo, transcreve e gera a ata com base na fala.</td>
+            <td>Reuniões comuns, chamadas com câmera, áudio gravado, alinhamentos sem dependência visual.</td>
+          </tr>
+          <tr>
+            <td>Áudio + vídeo</td>
+            <td>A IA usa áudio e frames do vídeo para entender contexto visual relevante.</td>
+            <td>Demonstrações de tela, análise de slides, apontamentos visuais, revisão de interface ou produto.</td>
+          </tr>
+          <tr>
+            <td>Tempo real</td>
+            <td>Transcrição parcial durante a reunião e ata final após encerramento.</td>
+            <td>Fase futura, para quem quer acompanhamento ao vivo e rascunho em andamento.</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        Tecnicamente, o fluxo correto para vídeos no modo simples é extrair o áudio do arquivo, converter para
+        um formato adequado à transcrição e ignorar a imagem. A análise visual deve ser opcional porque tende
+        a ser mais cara, lenta e só agrega valor quando o contexto visual realmente importa.
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>6. Fluxo Principal Do MVP</h2>
+      <ol>
+        <li>Usuário acessa o app e cria uma nova reunião.</li>
+        <li>O app exibe um aviso de consentimento orientando o usuário a cientificar todos os participantes.</li>
+        <li>Usuário informa título, cliente, data e participantes, se desejar.</li>
+        <li>Usuário envia um arquivo de áudio ou vídeo.</li>
+        <li>Se for vídeo, o app pergunta se deve analisar somente áudio ou áudio + vídeo.</li>
+        <li>Para o MVP, o fluxo principal recomendado é somente áudio.</li>
+        <li>O sistema extrai/converte o áudio quando necessário.</li>
+        <li>O sistema transcreve a reunião e separa trechos por tempo.</li>
+        <li>A IA analisa a transcrição e identifica pontos principais, decisões, dúvidas e tarefas.</li>
+        <li>O usuário escolhe um preset de ata.</li>
+        <li>O sistema gera a ata conforme o preset escolhido.</li>
+        <li>O usuário revisa e edita o documento.</li>
+        <li>O usuário exporta a ata em PDF, DOCX ou Markdown.</li>
+      </ol>
+    </section>
+
+    <section class="section page-break">
+      <h2>7. Presets De Ata</h2>
+      <p>
+        Presets são modelos de saída que definem como a reunião será apresentada. Eles não devem ser apenas
+        templates visuais; devem orientar a IA sobre o que observar, como escrever e quais campos preencher.
+      </p>
+      <h3>Presets iniciais recomendados</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Preset</th>
+            <th>Finalidade</th>
+            <th>Campos principais</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Ata objetiva com tarefas</td>
+            <td>Formato ideal para MVP e reuniões com cliente.</td>
+            <td>Resumo, solicitações, decisões, tarefas, prioridade, responsável, prazo, pendências.</td>
+          </tr>
+          <tr>
+            <td>Ata formal</td>
+            <td>Reuniões administrativas ou registro institucional.</td>
+            <td>Abertura, participantes, pauta, deliberações, encaminhamentos, encerramento.</td>
+          </tr>
+          <tr>
+            <td>Resumo executivo</td>
+            <td>Visão curta para liderança ou acompanhamento rápido.</td>
+            <td>Contexto, decisões críticas, riscos, próximos passos.</td>
+          </tr>
+          <tr>
+            <td>Backlog de tarefas</td>
+            <td>Converter reunião em lista operacional.</td>
+            <td>Tarefa, descrição, prioridade, origem da solicitação, dependências, critérios de aceite.</td>
+          </tr>
+          <tr>
+            <td>Reunião comercial ou CS</td>
+            <td>Registrar expectativas, objeções, promessas e follow-up.</td>
+            <td>Dores do cliente, oportunidades, compromissos assumidos, follow-ups, riscos de churn.</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Exemplo de estrutura do preset principal</h3>
+      <ul>
+        <li>Informações gerais: título, cliente, data, duração e participantes.</li>
+        <li>Resumo executivo da reunião.</li>
+        <li>Contexto e objetivo do encontro.</li>
+        <li>Pontos discutidos por tema.</li>
+        <li>Solicitações feitas pelo cliente.</li>
+        <li>Decisões tomadas.</li>
+        <li>Tarefas identificadas com prioridade, responsável sugerido e prazo.</li>
+        <li>Pendências e dúvidas em aberto.</li>
+        <li>Riscos, impedimentos e dependências.</li>
+        <li>Próximos passos recomendados.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>8. Priorização De Tarefas</h2>
+      <p>
+        A priorização automática é uma das partes mais importantes do produto. A IA deve classificar tarefas
+        com base no que foi dito, no tom de urgência, nos prazos mencionados e no impacto provável para o cliente.
+      </p>
+      <h3>Níveis de prioridade</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Nível</th>
+            <th>Critério</th>
+            <th>Exemplos de linguagem</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Crítica</td>
+            <td>Bloqueia operação, há prazo imediato ou risco alto para o cliente.</td>
+            <td>"precisa ser hoje", "está travando", "não conseguimos operar", "é urgente".</td>
+          </tr>
+          <tr>
+            <td>Alta</td>
+            <td>Importante para entrega próxima, cliente demonstrou forte necessidade.</td>
+            <td>"precisamos para esta semana", "isso é prioridade", "sem isso fica difícil".</td>
+          </tr>
+          <tr>
+            <td>Média</td>
+            <td>Relevante, mas sem bloqueio imediato ou prazo rígido.</td>
+            <td>"seria bom ajustar", "podemos colocar no próximo ciclo".</td>
+          </tr>
+          <tr>
+            <td>Baixa</td>
+            <td>Melhoria, ideia futura ou solicitação sem urgência explícita.</td>
+            <td>"quando der", "mais para frente", "não é prioridade agora".</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Campos recomendados para cada tarefa</h3>
+      <ul>
+        <li>Título curto da tarefa.</li>
+        <li>Descrição clara do que foi solicitado.</li>
+        <li>Prioridade sugerida e justificativa.</li>
+        <li>Responsável sugerido ou campo "não definido".</li>
+        <li>Prazo mencionado ou "sem prazo definido".</li>
+        <li>Trecho da transcrição que originou a tarefa.</li>
+        <li>Timestamp do trecho da reunião.</li>
+        <li>Dependências, dúvidas e riscos associados.</li>
+        <li>Status inicial: nova, em análise, aprovada ou pendente de validação.</li>
+      </ul>
+      <div class="warning callout">
+        A prioridade gerada pela IA deve ser tratada como sugestão. O usuário precisa poder alterar prioridade,
+        responsável e prazo antes de exportar ou compartilhar a ata.
+      </div>
+    </section>
+
+    <section class="section page-break">
+      <h2>9. Privacidade, Consentimento E Segurança</h2>
+      <p>
+        Como o produto grava e processa conversas, privacidade não deve ser um detalhe posterior. O MVP já deve
+        incluir avisos claros, controle de arquivos e transparência sobre o uso dos dados.
+      </p>
+      <h3>Aviso antes da gravação ou upload</h3>
+      <p>
+        Antes de iniciar uma gravação ao vivo, o app deve exibir uma mensagem como:
+      </p>
+      <div class="callout">
+        "Antes de iniciar a gravação, informe todos os participantes de que a reunião será gravada e processada
+        por IA para geração de transcrição, resumo, tarefas e ata. Ao continuar, você confirma que os participantes
+        foram cientificados conforme as regras aplicáveis à sua organização."
+      </div>
+      <h3>Cuidados mínimos no MVP</h3>
+      <ul>
+        <li>Confirmação explícita antes de processar áudio ou vídeo.</li>
+        <li>Opção para apagar arquivo original, transcrição e ata gerada.</li>
+        <li>Separação entre arquivo bruto, transcrição e documento final.</li>
+        <li>Registro de data de criação e usuário responsável pelo processamento.</li>
+        <li>Controle de acesso por login.</li>
+        <li>Arquivos privados por padrão.</li>
+        <li>Política simples de retenção: manter até o usuário excluir ou por prazo configurado.</li>
+      </ul>
+      <h3>Evolução de segurança</h3>
+      <ul>
+        <li>Criptografia dos arquivos em repouso.</li>
+        <li>Criptografia no tráfego.</li>
+        <li>Logs de acesso à reunião e à ata.</li>
+        <li>Permissões por equipe, cliente ou projeto.</li>
+        <li>Termos de consentimento personalizáveis por empresa.</li>
+        <li>Configuração para remover automaticamente arquivos brutos após a ata ser aprovada.</li>
+      </ul>
+      <p class="small muted">
+        Observação: o produto deve ser desenhado considerando boas práticas de proteção de dados e adequação à
+        LGPD, especialmente quando envolver clientes, colaboradores, dados sensíveis ou reuniões confidenciais.
+      </p>
+    </section>
+
+    <section class="section">
+      <h2>10. Requisitos Funcionais Do MVP</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Requisito</th>
+            <th>Prioridade</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>RF-01</td>
+            <td>Criar uma nova reunião com título, cliente, data e observações opcionais.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-02</td>
+            <td>Exibir aviso de consentimento antes de gravação ou processamento.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-03</td>
+            <td>Permitir upload de arquivo de áudio.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-04</td>
+            <td>Permitir upload de vídeo e extração de áudio.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-05</td>
+            <td>Transcrever o áudio da reunião.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-06</td>
+            <td>Gerar ata com base em preset escolhido.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-07</td>
+            <td>Identificar tarefas, responsáveis, prazos e prioridades.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-08</td>
+            <td>Permitir edição manual da ata e das tarefas.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-09</td>
+            <td>Exportar a ata em PDF.</td>
+            <td>Essencial</td>
+          </tr>
+          <tr>
+            <td>RF-10</td>
+            <td>Salvar histórico de reuniões processadas.</td>
+            <td>Importante</td>
+          </tr>
+          <tr>
+            <td>RF-11</td>
+            <td>Permitir busca simples em atas e transcrições.</td>
+            <td>Importante</td>
+          </tr>
+          <tr>
+            <td>RF-12</td>
+            <td>Permitir criação de presets personalizados.</td>
+            <td>Importante</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section page-break">
+      <h2>11. Requisitos Não Funcionais</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Categoria</th>
+            <th>Requisito</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Usabilidade</td>
+            <td>O usuário deve conseguir enviar um arquivo e gerar uma primeira ata sem treinamento.</td>
+          </tr>
+          <tr>
+            <td>Confiabilidade</td>
+            <td>O sistema deve sinalizar baixa confiança quando trechos do áudio estiverem ruins ou ambíguos.</td>
+          </tr>
+          <tr>
+            <td>Performance</td>
+            <td>O processamento deve informar progresso e evitar telas paradas durante transcrição e análise.</td>
+          </tr>
+          <tr>
+            <td>Escalabilidade</td>
+            <td>Processos de transcrição e geração devem rodar em filas assíncronas para arquivos grandes.</td>
+          </tr>
+          <tr>
+            <td>Segurança</td>
+            <td>Arquivos e atas devem ser privados por padrão e acessíveis apenas ao usuário autorizado.</td>
+          </tr>
+          <tr>
+            <td>Auditabilidade</td>
+            <td>Guardar registros básicos de criação, edição, exportação e exclusão.</td>
+          </tr>
+          <tr>
+            <td>Portabilidade</td>
+            <td>Exportação em formatos úteis: PDF no MVP; DOCX e Markdown em fases seguintes.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>12. Pipeline De IA</h2>
+      <ol>
+        <li><strong>Ingestão:</strong> receber áudio ou vídeo e validar tamanho, duração e formato.</li>
+        <li><strong>Extração de áudio:</strong> se o arquivo for vídeo, gerar uma trilha de áudio limpa.</li>
+        <li><strong>Pré-processamento:</strong> normalizar volume, reduzir ruído quando possível e dividir em blocos.</li>
+        <li><strong>Transcrição:</strong> converter fala em texto com timestamps.</li>
+        <li><strong>Diarização, futura:</strong> tentar separar falantes quando tecnicamente viável.</li>
+        <li><strong>Análise semântica:</strong> detectar temas, pedidos, decisões, riscos, dúvidas e próximos passos.</li>
+        <li><strong>Extração de tarefas:</strong> converter solicitações em itens acionáveis.</li>
+        <li><strong>Priorização:</strong> classificar urgência com justificativa e evidência textual.</li>
+        <li><strong>Geração da ata:</strong> aplicar o preset escolhido.</li>
+        <li><strong>Revisão assistida:</strong> apontar trechos incertos e permitir correção manual.</li>
+      </ol>
+      <h3>Saídas estruturadas recomendadas</h3>
+      <ul>
+        <li><code>transcript</code>: texto completo com timestamps.</li>
+        <li><code>summary</code>: resumo executivo.</li>
+        <li><code>topics</code>: assuntos discutidos.</li>
+        <li><code>decisions</code>: decisões tomadas.</li>
+        <li><code>tasks</code>: tarefas com prioridade, prazo, responsável e justificativa.</li>
+        <li><code>risks</code>: riscos e impedimentos.</li>
+        <li><code>open_questions</code>: dúvidas e pendências.</li>
+        <li><code>minutes</code>: ata final formatada.</li>
+      </ul>
+    </section>
+
+    <section class="section page-break">
+      <h2>13. Modelo De Dados Inicial</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Entidade</th>
+            <th>Campos principais</th>
+            <th>Observações</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Usuário</td>
+            <td>nome, e-mail, senha, organização, papel</td>
+            <td>Base para controle de acesso.</td>
+          </tr>
+          <tr>
+            <td>Cliente</td>
+            <td>nome, empresa, contatos, observações</td>
+            <td>Ajuda a organizar histórico por cliente.</td>
+          </tr>
+          <tr>
+            <td>Reunião</td>
+            <td>título, cliente, data, duração, status, participantes</td>
+            <td>Entidade central do produto.</td>
+          </tr>
+          <tr>
+            <td>Arquivo</td>
+            <td>tipo, nome, tamanho, duração, caminho, status</td>
+            <td>Representa áudio ou vídeo original.</td>
+          </tr>
+          <tr>
+            <td>Transcrição</td>
+            <td>texto, idioma, timestamps, confiança, falantes</td>
+            <td>Base para análise da IA.</td>
+          </tr>
+          <tr>
+            <td>Ata</td>
+            <td>preset, conteúdo, versão, status, exportações</td>
+            <td>Documento final editável.</td>
+          </tr>
+          <tr>
+            <td>Tarefa</td>
+            <td>título, descrição, prioridade, prazo, responsável, origem</td>
+            <td>Deve apontar para trecho da transcrição quando possível.</td>
+          </tr>
+          <tr>
+            <td>Preset</td>
+            <td>nome, descrição, instruções, campos, exemplo</td>
+            <td>Pode ser padrão do sistema ou criado pelo usuário.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>14. Experiência Do Usuário No MVP</h2>
+      <h3>Telas recomendadas</h3>
+      <ul>
+        <li><strong>Dashboard:</strong> lista de reuniões recentes, status de processamento e botão "Nova reunião".</li>
+        <li><strong>Nova reunião:</strong> formulário simples com título, cliente, participantes e upload.</li>
+        <li><strong>Consentimento:</strong> confirmação antes de gravar ou processar arquivo.</li>
+        <li><strong>Processamento:</strong> tela com etapas: upload, extração, transcrição, análise, geração da ata.</li>
+        <li><strong>Editor da ata:</strong> ata gerada, tarefas extraídas, trechos de origem e botões de exportação.</li>
+        <li><strong>Presets:</strong> escolha do modelo e, em fase posterior, criação de modelo personalizado.</li>
+      </ul>
+      <h3>Princípios de interface</h3>
+      <ul>
+        <li>Fluxo curto: enviar arquivo, escolher modelo, revisar ata.</li>
+        <li>Não esconder incertezas da IA: trechos duvidosos devem ser marcados.</li>
+        <li>Priorizar edição rápida de tarefas, pois esse é o principal valor operacional.</li>
+        <li>Exibir evidências: cada tarefa importante deve ter timestamp ou trecho de origem.</li>
+        <li>Evitar que o usuário precise entender detalhes técnicos de transcrição ou compressão.</li>
+      </ul>
+    </section>
+
+    <section class="section page-break">
+      <h2>15. Stack Técnica Escolhida</h2>
+      <p>
+        A stack foi escolhida pensando em três necessidades principais: validar o MVP rapidamente,
+        reaproveitar o máximo possível do frontend entre web, desktop e mobile, e manter o processamento pesado
+        de áudio, vídeo e IA no backend. O app não deve depender do celular ou do computador do usuário para
+        executar transcrição, análise de vídeo ou geração de ata; esses processos devem acontecer de forma
+        controlada no servidor.
+      </p>
+
+      <h3>Resumo da stack recomendada</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Camada</th>
+            <th>Stack escolhida</th>
+            <th>Motivo da escolha</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Frontend web</td>
+            <td>React + TypeScript + Vite</td>
+            <td>Permite criar uma interface moderna, rápida e reaproveitável para web, desktop e mobile web.</td>
+          </tr>
+          <tr>
+            <td>Interface e estilo</td>
+            <td>Tailwind CSS + componentes próprios ou shadcn/ui</td>
+            <td>Acelera a criação de telas consistentes sem prender o produto a um visual pesado.</td>
+          </tr>
+          <tr>
+            <td>Estado e chamadas API</td>
+            <td>TanStack Query + Zustand</td>
+            <td>TanStack Query cuida de dados vindos do backend; Zustand resolve estado local com baixa complexidade.</td>
+          </tr>
+          <tr>
+            <td>Desktop</td>
+            <td>Tauri</td>
+            <td>Gera instaláveis leves para Windows, macOS e Linux usando o mesmo frontend React.</td>
+          </tr>
+          <tr>
+            <td>Mobile inicial</td>
+            <td>PWA</td>
+            <td>Permite validar uso em celular rapidamente, inclusive no iPhone, sem depender de loja ou build nativo no início.</td>
+          </tr>
+          <tr>
+            <td>Mobile instalável</td>
+            <td>Capacitor</td>
+            <td>Permite empacotar o app web como aplicativo Android/iOS com acesso a recursos nativos quando necessário.</td>
+          </tr>
+          <tr>
+            <td>Backend</td>
+            <td>Python + FastAPI</td>
+            <td>Boa combinação para APIs, processamento de arquivos, IA, áudio, vídeo e integrações com bibliotecas Python.</td>
+          </tr>
+          <tr>
+            <td>Processamento assíncrono</td>
+            <td>Redis + Celery</td>
+            <td>Reuniões podem demorar para transcrever e analisar; filas evitam travar a API durante jobs longos.</td>
+          </tr>
+          <tr>
+            <td>Banco de dados</td>
+            <td>PostgreSQL</td>
+            <td>Banco relacional robusto para usuários, reuniões, atas, tarefas, presets, permissões e histórico.</td>
+          </tr>
+          <tr>
+            <td>Arquivos</td>
+            <td>Storage S3-compatible</td>
+            <td>Armazena áudios, vídeos, transcrições e PDFs com possibilidade de trocar de provedor no futuro.</td>
+          </tr>
+          <tr>
+            <td>Áudio e vídeo</td>
+            <td>FFmpeg no backend</td>
+            <td>Ferramenta madura para extrair áudio de vídeos, converter formatos e preparar arquivos para transcrição.</td>
+          </tr>
+          <tr>
+            <td>IA</td>
+            <td>Serviço externo de transcrição + LLM para análise</td>
+            <td>Evita rodar modelos pesados localmente e permite evoluir qualidade sem exigir hardware forte do usuário.</td>
+          </tr>
+          <tr>
+            <td>Exportação</td>
+            <td>HTML/CSS para PDF no backend</td>
+            <td>Facilita gerar atas profissionais e reaproveitar estilos já usados no produto.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Decisão sobre React</h3>
+      <p>
+        React será a base do frontend porque atende bem ao objetivo de criar uma aplicação rica, com editor de ata,
+        lista de tarefas, upload de arquivos, estados de processamento e visualização de transcrição. Com TypeScript,
+        o projeto ganha mais segurança em contratos de dados, especialmente em objetos estruturados como tarefas,
+        presets, decisões e transcrições.
+      </p>
+      <p>
+        Vite foi escolhido por ser simples, rápido e adequado para um frontend que depois pode ser empacotado no
+        Tauri, servido como web app ou usado como base para PWA/Capacitor.
+      </p>
+
+      <h3>Decisão sobre Tauri</h3>
+      <p>
+        Tauri será usado para o aplicativo desktop porque entrega instaláveis leves e permite reaproveitar o mesmo
+        React da versão web. Para o perfil do produto, o desktop é útil principalmente para profissionais que gravam
+        reuniões no computador, fazem upload de vídeos grandes ou querem uma experiência parecida com aplicativo nativo.
+      </p>
+      <div class="warning callout">
+        Tauri mobile não será o caminho principal do MVP. Embora seja possível gerar apps Android e iOS com Tauri v2,
+        isso adiciona complexidade de Rust, SDKs mobile, Xcode para iOS e compatibilidade de plugins. Para este projeto,
+        essa complexidade deve entrar apenas depois que o valor principal estiver validado.
+      </div>
+
+      <h3>Decisão sobre mobile</h3>
+      <p>
+        O mobile será dividido em duas etapas. Primeiro, o produto terá uma PWA responsiva para permitir acesso pelo
+        navegador do celular e instalação na tela inicial quando possível. Depois, o Capacitor será usado para gerar
+        instaláveis Android e iOS a partir do mesmo frontend.
+      </p>
+      <p>
+        No Android, a distribuição fora da Play Store é viável por APK assinado, mas exige orientar o usuário a permitir
+        instalação de fontes externas. No iPhone, a distribuição fora da App Store é limitada: o caminho realista para
+        testes é TestFlight; para distribuição ampla, App Store ou modelos empresariais da Apple. Portanto, no MVP, PWA
+        reduz o risco e evita bloquear o projeto em burocracias de assinatura e distribuição.
+      </p>
+
+      <h3>Decisão sobre backend</h3>
+      <p>
+        FastAPI foi escolhido porque o backend será responsável por muito mais do que CRUD. Ele precisará receber arquivos
+        grandes, controlar filas, chamar serviços de IA, executar FFmpeg, armazenar resultados e devolver status de
+        processamento. Python também facilita a integração com bibliotecas de áudio, vídeo, documentos, IA e automação.
+      </p>
+      <p>
+        O processamento será assíncrono com Redis e Celery porque transcrição e análise podem demorar minutos. A API deve
+        responder rápido, criar um job e deixar o frontend acompanhar o progresso em etapas: upload, extração de áudio,
+        transcrição, análise, geração de ata e exportação.
+      </p>
+
+      <h3>Arquitetura recomendada para o MVP</h3>
+      <ol>
+        <li>Frontend React cria a reunião e envia o arquivo.</li>
+        <li>Backend FastAPI valida o arquivo e cria um registro no PostgreSQL.</li>
+        <li>Arquivo original é salvo em storage S3-compatible.</li>
+        <li>Celery inicia job assíncrono de processamento.</li>
+        <li>FFmpeg extrai ou normaliza o áudio.</li>
+        <li>Serviço de transcrição gera texto com timestamps.</li>
+        <li>LLM analisa transcrição e extrai resumo, decisões, tarefas, prioridades e pendências.</li>
+        <li>Backend salva resultados estruturados no PostgreSQL.</li>
+        <li>Frontend exibe ata editável e tarefas revisáveis.</li>
+        <li>Backend gera PDF final quando o usuário exporta.</li>
+      </ol>
+
+      <h3>O que fica fora da primeira versão técnica</h3>
+      <ul>
+        <li>Rodar transcrição e LLM localmente no computador ou celular do usuário.</li>
+        <li>Usar Tauri mobile como base principal do app mobile.</li>
+        <li>Criar app nativo separado em Swift/Kotlin no MVP.</li>
+        <li>Fazer análise visual completa de vídeo antes de validar o fluxo de áudio.</li>
+        <li>Integrações com Zoom, Meet, Teams, Jira, ClickUp ou Notion antes do fluxo principal estar estável.</li>
+      </ul>
+
+      <h3>Referências técnicas consideradas</h3>
+      <ul>
+        <li>Tauri: suporte a desktop, Android e iOS, com requisitos específicos de Rust, Android Studio e Xcode. Referência: <code>https://v2.tauri.app/start/prerequisites/</code></li>
+        <li>Capacitor: runtime para empacotar aplicações web em apps iOS e Android com acesso a APIs nativas. Referência: <code>https://capacitorjs.com/docs</code></li>
+        <li>Apple: iOS exige fluxo de distribuição controlado, como TestFlight, App Store, Ad Hoc ou modelos empresariais. Referência: <code>https://developer.apple.com/testflight/</code></li>
+        <li>Android: APK fora da Play Store é possível, mas requer assinatura e permissão de instalação de fontes externas. Referência: <code>https://developer.android.com/studio/publish/</code></li>
+      </ul>
+    </section>
+
+    <section class="section page-break">
+      <h2>16. Fases Do Projeto</h2>
+
+      <div class="phase">
+        <h3>Fase 1 - MVP: Upload, transcrição e ata por preset</h3>
+        <p><strong>Objetivo:</strong> validar se o produto consegue transformar áudio/vídeo de reuniões com clientes em atas úteis e tarefas priorizadas.</p>
+        <p><strong>Funcionalidades:</strong></p>
+        <ul>
+          <li>Cadastro/login simples.</li>
+          <li>Criação de reunião.</li>
+          <li>Aviso de consentimento antes do processamento.</li>
+          <li>Upload de áudio e vídeo.</li>
+          <li>Extração de áudio para vídeos.</li>
+          <li>Transcrição do áudio.</li>
+          <li>Escolha de preset principal: "Ata objetiva com tarefas".</li>
+          <li>Geração de ata, tarefas, prioridades, decisões e pendências.</li>
+          <li>Editor básico da ata e das tarefas.</li>
+          <li>Exportação em PDF.</li>
+        </ul>
+        <p><strong>Fora do MVP:</strong> captura ao vivo, integração com Zoom/Meet/Teams, análise visual avançada, diarização perfeita e automação de envio ao cliente.</p>
+      </div>
+
+      <div class="phase">
+        <h3>Fase 2 - Reunião ao vivo e rascunho em tempo real</h3>
+        <p><strong>Objetivo:</strong> permitir que o usuário grave uma reunião pelo próprio app e acompanhe uma transcrição parcial.</p>
+        <ul>
+          <li>Captura de microfone pelo navegador.</li>
+          <li>Transcrição incremental durante a reunião.</li>
+          <li>Marcadores manuais: decisão, tarefa, dúvida, destaque.</li>
+          <li>Ata final gerada após encerramento.</li>
+          <li>Melhor controle de consentimento antes da gravação.</li>
+        </ul>
+      </div>
+
+      <div class="phase">
+        <h3>Fase 3 - Presets avançados e colaboração</h3>
+        <p><strong>Objetivo:</strong> tornar a ferramenta adaptável a diferentes tipos de cliente, equipe e formato de ata.</p>
+        <ul>
+          <li>Criação de presets personalizados por prompt.</li>
+          <li>Biblioteca de modelos por área: comercial, jurídico, projetos, CS, produto.</li>
+          <li>Compartilhamento de ata com equipe.</li>
+          <li>Comentários e aprovação da ata.</li>
+          <li>Versionamento do documento final.</li>
+        </ul>
+      </div>
+
+      <div class="phase">
+        <h3>Fase 4 - Integrações operacionais</h3>
+        <p><strong>Objetivo:</strong> conectar a ata e as tarefas aos sistemas onde a equipe trabalha.</p>
+        <ul>
+          <li>Integração com Google Calendar e Outlook Calendar.</li>
+          <li>Importação de reuniões do Zoom, Google Meet ou Microsoft Teams.</li>
+          <li>Envio de tarefas para Trello, Jira, ClickUp, Asana ou Notion.</li>
+          <li>Envio de resumo por e-mail.</li>
+          <li>Webhooks para automações internas.</li>
+        </ul>
+      </div>
+
+      <div class="phase">
+        <h3>Fase 5 - Análise multimodal de vídeo</h3>
+        <p><strong>Objetivo:</strong> usar imagem do vídeo quando o contexto visual for necessário para entender a reunião.</p>
+        <ul>
+          <li>Análise de frames em intervalos relevantes.</li>
+          <li>Leitura de slides, telas compartilhadas e elementos visuais.</li>
+          <li>Conexão entre fala e conteúdo apresentado.</li>
+          <li>Marcação de evidências visuais na ata.</li>
+          <li>Opção para processar vídeo inteiro ou apenas trechos selecionados.</li>
+        </ul>
+      </div>
+
+      <div class="phase">
+        <h3>Fase 6 - Produto empresarial e governança</h3>
+        <p><strong>Objetivo:</strong> preparar o produto para organizações com maior exigência de segurança, controle e escala.</p>
+        <ul>
+          <li>Controle de permissões por organização, cliente e projeto.</li>
+          <li>Políticas de retenção configuráveis.</li>
+          <li>Auditoria de acesso e exportação.</li>
+          <li>Relatórios de produtividade e recorrência de solicitações.</li>
+          <li>Base histórica de decisões e compromissos por cliente.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section page-break">
+      <h2>17. Backlog Inicial Do MVP</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Épico</th>
+            <th>Histórias de usuário</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Gestão de reunião</td>
+            <td>Como usuário, quero criar uma reunião com título e cliente para organizar meus arquivos e atas.</td>
+          </tr>
+          <tr>
+            <td>Consentimento</td>
+            <td>Como usuário, quero ver um aviso antes de gravar/processar para lembrar de cientificar os participantes.</td>
+          </tr>
+          <tr>
+            <td>Upload</td>
+            <td>Como usuário, quero enviar áudio ou vídeo para que o sistema gere a ata automaticamente.</td>
+          </tr>
+          <tr>
+            <td>Extração de áudio</td>
+            <td>Como usuário, quero que o app trate vídeo automaticamente quando eu escolher analisar somente áudio.</td>
+          </tr>
+          <tr>
+            <td>Transcrição</td>
+            <td>Como usuário, quero ver a transcrição para validar se a IA entendeu a reunião.</td>
+          </tr>
+          <tr>
+            <td>Ata</td>
+            <td>Como usuário, quero gerar uma ata com resumo, decisões e tarefas para compartilhar com minha equipe ou cliente.</td>
+          </tr>
+          <tr>
+            <td>Tarefas</td>
+            <td>Como usuário, quero que a IA separe pedidos do cliente em tarefas com prioridade para facilitar a execução.</td>
+          </tr>
+          <tr>
+            <td>Editor</td>
+            <td>Como usuário, quero editar a ata e as tarefas antes de exportar para corrigir e ajustar o documento final.</td>
+          </tr>
+          <tr>
+            <td>Exportação</td>
+            <td>Como usuário, quero exportar a ata em PDF para enviar ou arquivar.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>18. Critérios De Sucesso Do MVP</h2>
+      <ul>
+        <li>Usuário consegue gerar uma ata completa a partir de um arquivo de reunião real.</li>
+        <li>O tempo gasto para criar a ata é menor do que escrever manualmente.</li>
+        <li>Ao menos 80% das tarefas importantes são identificadas pela IA em testes internos.</li>
+        <li>Prioridades sugeridas são consideradas úteis pelo usuário na maioria dos casos.</li>
+        <li>Usuário consegue revisar e exportar a ata sem depender de suporte técnico.</li>
+        <li>O app deixa claro quando a informação vem da IA e precisa de revisão humana.</li>
+      </ul>
+      <h3>Métricas de produto</h3>
+      <ul>
+        <li>Tempo médio entre upload e ata pronta.</li>
+        <li>Percentual de atas exportadas após geração.</li>
+        <li>Número médio de edições feitas por ata.</li>
+        <li>Quantidade de tarefas aceitas versus removidas pelo usuário.</li>
+        <li>Taxa de retorno do usuário para uma segunda reunião.</li>
+      </ul>
+    </section>
+
+    <section class="section page-break">
+      <h2>19. Riscos E Decisões Em Aberto</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Risco</th>
+            <th>Impacto</th>
+            <th>Mitigação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Áudio de baixa qualidade</td>
+            <td>Transcrição ruim e ata imprecisa.</td>
+            <td>Exibir confiança, permitir revisão e orientar melhores práticas de gravação.</td>
+          </tr>
+          <tr>
+            <td>IA inventar informação</td>
+            <td>Risco de compromissos incorretos.</td>
+            <td>Exigir evidência textual para tarefas e decisões importantes.</td>
+          </tr>
+          <tr>
+            <td>Prioridade mal interpretada</td>
+            <td>Equipe pode atacar item errado.</td>
+            <td>Mostrar justificativa e permitir alteração pelo usuário.</td>
+          </tr>
+          <tr>
+            <td>Questões de privacidade</td>
+            <td>Risco legal e perda de confiança.</td>
+            <td>Consentimento, exclusão, acesso privado e política de retenção clara.</td>
+          </tr>
+          <tr>
+            <td>Custo alto de processamento</td>
+            <td>MVP pode ficar caro em vídeos longos.</td>
+            <td>Começar com análise de áudio e limitar duração/tamanho no plano inicial.</td>
+          </tr>
+        </tbody>
+      </table>
+      <h3>Decisões em aberto</h3>
+      <ul>
+        <li>Nome comercial do produto.</li>
+        <li>Modelo de cobrança: por usuário, por minuto processado, por reunião ou plano mensal.</li>
+        <li>Duração máxima de arquivo no MVP.</li>
+        <li>Idiomas suportados inicialmente.</li>
+        <li>Se a primeira versão terá colaboração em equipe ou apenas uso individual.</li>
+        <li>Qual provedor final de transcrição e LLM será usado em produção.</li>
+        <li>Se o primeiro empacotamento mobile será apenas PWA ou também APK Android com Capacitor.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>20. Sugestão De Cronograma</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Período</th>
+            <th>Foco</th>
+            <th>Entregas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Semana 1</td>
+            <td>Descoberta e desenho do MVP</td>
+            <td>Protótipo de fluxo, stack técnica, modelo de dados, presets iniciais e critérios de sucesso.</td>
+          </tr>
+          <tr>
+            <td>Semanas 2-3</td>
+            <td>Upload, arquivos e processamento</td>
+            <td>Criação de reunião, upload, extração de áudio e fila de processamento.</td>
+          </tr>
+          <tr>
+            <td>Semanas 4-5</td>
+            <td>Transcrição e análise de IA</td>
+            <td>Transcrição, resumo, tarefas, prioridades, decisões e pendências.</td>
+          </tr>
+          <tr>
+            <td>Semana 6</td>
+            <td>Editor e exportação</td>
+            <td>Editor de ata, edição de tarefas e exportação em PDF.</td>
+          </tr>
+          <tr>
+            <td>Semana 7</td>
+            <td>Testes com reuniões reais</td>
+            <td>Ajuste dos prompts, validação de prioridades e correção de UX.</td>
+          </tr>
+          <tr>
+            <td>Semana 8</td>
+            <td>Beta fechado</td>
+            <td>Primeira versão para usuários selecionados.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section page-break">
+      <h2>21. Definição De Pronto Para O MVP</h2>
+      <ul>
+        <li>Usuário consegue criar uma reunião.</li>
+        <li>Usuário consegue confirmar o aviso de consentimento.</li>
+        <li>Usuário consegue enviar áudio ou vídeo.</li>
+        <li>Vídeo enviado pode ser processado como áudio.</li>
+        <li>Transcrição é gerada e exibida.</li>
+        <li>Ata é gerada com base no preset principal.</li>
+        <li>Tarefas são extraídas com prioridade e justificativa.</li>
+        <li>Usuário consegue editar ata e tarefas.</li>
+        <li>Usuário consegue exportar PDF.</li>
+        <li>Usuário consegue excluir reunião e dados associados.</li>
+        <li>O sistema informa erro quando arquivo é inválido, grande demais ou não processável.</li>
+        <li>Arquitetura base com React, FastAPI, PostgreSQL, Redis, Celery, FFmpeg e storage está funcionando.</li>
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>22. Próximo Passo Recomendado</h2>
+      <p>
+        O próximo passo ideal é transformar este documento em uma especificação de implementação do MVP:
+        telas, endpoints, banco de dados, arquitetura, modelo de prompts, estrutura de filas, armazenamento de
+        arquivos e plano técnico. Antes disso, vale escolher um nome provisório para o produto e definir o primeiro
+        perfil de usuário de teste.
+      </p>
+      <div class="callout">
+        Recomendação prática: começar pelo MVP de upload de arquivo e geração de ata. Esse fluxo já valida o
+        valor principal do produto sem depender de captura ao vivo, integrações externas ou análise visual cara.
+      </div>
+    </section>
+  </main>
+</body>
+</html>

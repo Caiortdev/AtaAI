@@ -1,0 +1,35 @@
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+tools/node_modules/
+dist/
+coverage/
+.vite/
+logs/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+
+# Env
+.env
+.env.local
+
+# Runtime storage
+backend/storage/
+
+# Tauri / Capacitor future outputs
+src-tauri/target/
+android/app/build/
+ios/App/build/
