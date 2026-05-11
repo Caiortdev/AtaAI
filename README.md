@@ -1,4 +1,6 @@
-# Gerador de Ata de Reuniao por IA
+# AtaAI
+
+AtaAI transforma gravacoes e anotacoes de reunioes em atas organizadas, com decisoes, tarefas e proximos passos reunidos em um so lugar.
 
 MVP para capturar reunioes com clientes, processar audio/video, gerar transcricao, ata estruturada e tarefas priorizadas.
 
