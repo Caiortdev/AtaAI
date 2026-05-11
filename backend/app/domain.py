@@ -89,6 +89,16 @@ class MeetingAnalysis(BaseModel):
     minutes_markdown: str
 
 
+class MeetingAnalysisUpdate(BaseModel):
+    executive_summary: str = Field(min_length=1, max_length=4000)
+    topics: list[str] = Field(default_factory=list)
+    decisions: list[str] = Field(default_factory=list)
+    tasks: list[TaskItem] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    minutes_markdown: str = Field(min_length=1)
+
+
 class Meeting(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     title: str

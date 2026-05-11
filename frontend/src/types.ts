@@ -79,3 +79,14 @@ export type MeetingCreate = {
   notes?: string | null;
   consent_confirmed: boolean;
 };
+
+export type MeetingAnalysisUpdate = Pick<
+  MeetingAnalysis,
+  | "executive_summary"
+  | "topics"
+  | "decisions"
+  | "tasks"
+  | "risks"
+  | "open_questions"
+  | "minutes_markdown"
+>;

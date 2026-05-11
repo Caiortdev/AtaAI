@@ -1,10 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { FormEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { createMeeting, listMeetings, processMeeting, uploadMeetingFile } from "./api";
+import {
+  createMeeting,
+  listMeetings,
+  processMeeting,
+  updateMeetingAnalysis,
+  uploadMeetingFile,
+} from "./api";
 import { useWorkspaceStore } from "./store";
-import type { AnalysisMode, Meeting, Priority } from "./types";
+import type { AnalysisMode, Meeting, MeetingAnalysis, MeetingAnalysisUpdate, Priority, TaskItem } from "./types";
 
 const priorityLabel: Record<Priority, string> = {
   critical: "Critica",
@@ -26,6 +32,12 @@ const statusLabel: Record<string, string> = {
   processing: "Processando",
   completed: "Concluida",
   failed: "Falhou",
+};
+
+const taskStatusLabel: Record<TaskItem["status"], string> = {
+  new: "Nova",
+  review: "Em revisao",
+  approved: "Aprovada",
 };
 
 export default function App() {
@@ -406,23 +418,118 @@ function StatusBox({ meeting }: { meeting: Meeting }) {
 }
 
 function AnalysisView({ meeting }: { meeting: Meeting }) {
+  const queryClient = useQueryClient();
   const analysis = meeting.analysis;
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState<MeetingAnalysisUpdate | null>(
+    analysis ? analysisToDraft(analysis) : null,
+  );
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!analysis) {
+      setDraft(null);
+      return;
+    }
+    setDraft(analysisToDraft(analysis));
+    setIsEditing(false);
+    setSaveError(null);
+  }, [analysis, meeting.id]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload: MeetingAnalysisUpdate) => updateMeetingAnalysis(meeting.id, payload),
+    onSuccess: async () => {
+      setIsEditing(false);
+      setSaveError(null);
+      await queryClient.invalidateQueries({ queryKey: ["meetings"] });
+    },
+    onError: (mutationError) => setSaveError(mutationError.message),
+  });
+
   if (!analysis) return null;
+  const currentAnalysis = analysis;
+
+  function startEditing() {
+    setDraft(analysisToDraft(currentAnalysis));
+    setSaveError(null);
+    setIsEditing(true);
+  }
+
+  function cancelEditing() {
+    setDraft(analysisToDraft(currentAnalysis));
+    setSaveError(null);
+    setIsEditing(false);
+  }
+
+  function saveDraft() {
+    if (!draft) return;
+    setSaveError(null);
+    saveMutation.mutate({
+      ...draft,
+      topics: cleanList(draft.topics),
+      decisions: cleanList(draft.decisions),
+      risks: cleanList(draft.risks),
+      open_questions: cleanList(draft.open_questions),
+      tasks: draft.tasks.filter((task) => task.title.trim() || task.description.trim()),
+    });
+  }
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <Panel title="Ata gerada">
-        <dl className="mb-3 grid grid-cols-2 gap-3 text-xs text-slate-600">
-          <div>
-            <dt className="font-semibold text-slate-500">Provedor</dt>
-            <dd>{analysis.minutes_provider}</dd>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <dl className="grid grid-cols-2 gap-3 text-xs text-slate-600">
+            <div>
+              <dt className="font-semibold text-slate-500">Provedor</dt>
+              <dd>{analysis.minutes_provider}</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-slate-500">Modelo</dt>
+              <dd>{analysis.minutes_model}</dd>
+            </div>
+          </dl>
+          <div className="flex gap-2">
+            {isEditing ? (
+              <>
+                <button className="button-secondary" onClick={cancelEditing}>
+                  Cancelar
+                </button>
+                <button className="button-primary" disabled={saveMutation.isPending} onClick={saveDraft}>
+                  {saveMutation.isPending ? "Salvando..." : "Salvar revisao"}
+                </button>
+              </>
+            ) : (
+              <button className="button-secondary" onClick={startEditing}>
+                Revisar ata
+              </button>
+            )}
           </div>
-          <div>
-            <dt className="font-semibold text-slate-500">Modelo</dt>
-            <dd>{analysis.minutes_model}</dd>
+        </div>
+        {saveError ? (
+          <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {saveError}
           </div>
-        </dl>
-        <div className="prose-like whitespace-pre-wrap">{analysis.minutes_markdown}</div>
+        ) : null}
+        {isEditing && draft ? (
+          <div className="space-y-4">
+            <Field label="Ata em Markdown">
+              <textarea
+                className="input min-h-96 resize-y font-mono"
+                value={draft.minutes_markdown}
+                onChange={(event) => setDraft({ ...draft, minutes_markdown: event.target.value })}
+              />
+            </Field>
+            <Field label="Resumo executivo">
+              <textarea
+                className="input min-h-24 resize-y"
+                value={draft.executive_summary}
+                onChange={(event) => setDraft({ ...draft, executive_summary: event.target.value })}
+              />
+            </Field>
+          </div>
+        ) : (
+          <div className="prose-like whitespace-pre-wrap">{analysis.minutes_markdown}</div>
+        )}
       </Panel>
 
       <div className="space-y-5">
@@ -443,34 +550,246 @@ function AnalysisView({ meeting }: { meeting: Meeting }) {
         </Panel>
 
         <Panel title="Tarefas">
-          <div className="space-y-3">
-            {analysis.tasks.map((task) => (
-              <article className="rounded-md border border-slate-200 p-3" key={task.id}>
-                <div className="flex items-start justify-between gap-3">
-                  <h3 className="text-sm font-semibold">{task.title}</h3>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs ${priorityClass[task.priority]}`}>
-                    {priorityLabel[task.priority]}
-                  </span>
-                </div>
-                <p className="mt-2 text-sm text-slate-600">{task.description}</p>
-                <p className="mt-2 text-xs text-slate-500">{task.priority_reason}</p>
-              </article>
-            ))}
-          </div>
+          {isEditing && draft ? (
+            <TaskEditor
+              tasks={draft.tasks}
+              onChange={(tasks) => setDraft({ ...draft, tasks })}
+            />
+          ) : (
+            <div className="space-y-3">
+              {analysis.tasks.map((task) => (
+                <TaskCard task={task} key={task.id} />
+              ))}
+            </div>
+          )}
         </Panel>
 
         <Panel title="Resumo">
-          <p className="text-sm text-slate-700">{analysis.executive_summary}</p>
-          <h3 className="mt-4 text-sm font-semibold">Decisoes</h3>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-            {analysis.decisions.map((decision) => (
-              <li key={decision}>{decision}</li>
-            ))}
-          </ul>
+          {isEditing && draft ? (
+            <div className="space-y-4">
+              <Field label="Topicos">
+                <textarea
+                  className="input min-h-24 resize-y"
+                  value={draft.topics.join("\n")}
+                  onChange={(event) => setDraft({ ...draft, topics: linesToList(event.target.value) })}
+                />
+              </Field>
+              <Field label="Decisoes">
+                <textarea
+                  className="input min-h-24 resize-y"
+                  value={draft.decisions.join("\n")}
+                  onChange={(event) => setDraft({ ...draft, decisions: linesToList(event.target.value) })}
+                />
+              </Field>
+              <Field label="Riscos">
+                <textarea
+                  className="input min-h-20 resize-y"
+                  value={draft.risks.join("\n")}
+                  onChange={(event) => setDraft({ ...draft, risks: linesToList(event.target.value) })}
+                />
+              </Field>
+              <Field label="Duvidas abertas">
+                <textarea
+                  className="input min-h-20 resize-y"
+                  value={draft.open_questions.join("\n")}
+                  onChange={(event) => setDraft({ ...draft, open_questions: linesToList(event.target.value) })}
+                />
+              </Field>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-slate-700">{analysis.executive_summary}</p>
+              <h3 className="mt-4 text-sm font-semibold">Decisoes</h3>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                {analysis.decisions.map((decision) => (
+                  <li key={decision}>{decision}</li>
+                ))}
+              </ul>
+              {analysis.risks.length ? (
+                <>
+                  <h3 className="mt-4 text-sm font-semibold">Riscos</h3>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                    {analysis.risks.map((risk) => (
+                      <li key={risk}>{risk}</li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </>
+          )}
         </Panel>
       </div>
     </div>
   );
+}
+
+function TaskCard({ task }: { task: TaskItem }) {
+  return (
+    <article className="rounded-md border border-slate-200 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <h3 className="text-sm font-semibold">{task.title}</h3>
+        <span className={`rounded-full border px-2 py-0.5 text-xs ${priorityClass[task.priority]}`}>
+          {priorityLabel[task.priority]}
+        </span>
+      </div>
+      <p className="mt-2 text-sm text-slate-600">{task.description}</p>
+      <dl className="mt-3 grid gap-2 text-xs text-slate-500">
+        <div>
+          <dt className="font-semibold">Status</dt>
+          <dd>{taskStatusLabel[task.status]}</dd>
+        </div>
+        {task.owner ? (
+          <div>
+            <dt className="font-semibold">Responsavel</dt>
+            <dd>{task.owner}</dd>
+          </div>
+        ) : null}
+        {task.due_date ? (
+          <div>
+            <dt className="font-semibold">Prazo</dt>
+            <dd>{task.due_date}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <p className="mt-2 text-xs text-slate-500">{task.priority_reason}</p>
+    </article>
+  );
+}
+
+function TaskEditor({
+  tasks,
+  onChange,
+}: {
+  tasks: TaskItem[];
+  onChange: (tasks: TaskItem[]) => void;
+}) {
+  function updateTask(index: number, patch: Partial<TaskItem>) {
+    onChange(tasks.map((task, currentIndex) => (currentIndex === index ? { ...task, ...patch } : task)));
+  }
+
+  function removeTask(index: number) {
+    onChange(tasks.filter((_, currentIndex) => currentIndex !== index));
+  }
+
+  function addTask() {
+    onChange([
+      ...tasks,
+      {
+        id: window.crypto.randomUUID(),
+        title: "",
+        description: "",
+        priority: "medium",
+        priority_reason: "",
+        owner: null,
+        due_date: null,
+        source_excerpt: null,
+        source_timestamp: null,
+        status: "review",
+      },
+    ]);
+  }
+
+  return (
+    <div className="space-y-3">
+      {tasks.map((task, index) => (
+        <article className="rounded-md border border-slate-200 p-3" key={task.id}>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold">Tarefa {index + 1}</h3>
+            <button className="button-secondary px-3 py-1" onClick={() => removeTask(index)}>
+              Remover
+            </button>
+          </div>
+          <div className="space-y-3">
+            <Field label="Titulo">
+              <input
+                className="input"
+                value={task.title}
+                onChange={(event) => updateTask(index, { title: event.target.value })}
+              />
+            </Field>
+            <Field label="Descricao">
+              <textarea
+                className="input min-h-20 resize-y"
+                value={task.description}
+                onChange={(event) => updateTask(index, { description: event.target.value })}
+              />
+            </Field>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Prioridade">
+                <select
+                  className="input"
+                  value={task.priority}
+                  onChange={(event) => updateTask(index, { priority: event.target.value as Priority })}
+                >
+                  <option value="critical">Critica</option>
+                  <option value="high">Alta</option>
+                  <option value="medium">Media</option>
+                  <option value="low">Baixa</option>
+                </select>
+              </Field>
+              <Field label="Status">
+                <select
+                  className="input"
+                  value={task.status}
+                  onChange={(event) => updateTask(index, { status: event.target.value as TaskItem["status"] })}
+                >
+                  <option value="new">Nova</option>
+                  <option value="review">Em revisao</option>
+                  <option value="approved">Aprovada</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="Justificativa da prioridade">
+              <textarea
+                className="input min-h-20 resize-y"
+                value={task.priority_reason}
+                onChange={(event) => updateTask(index, { priority_reason: event.target.value })}
+              />
+            </Field>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="Responsavel">
+                <input
+                  className="input"
+                  value={task.owner ?? ""}
+                  onChange={(event) => updateTask(index, { owner: event.target.value || null })}
+                />
+              </Field>
+              <Field label="Prazo">
+                <input
+                  className="input"
+                  value={task.due_date ?? ""}
+                  onChange={(event) => updateTask(index, { due_date: event.target.value || null })}
+                />
+              </Field>
+            </div>
+          </div>
+        </article>
+      ))}
+      <button className="button-secondary w-full" onClick={addTask}>
+        Adicionar tarefa
+      </button>
+    </div>
+  );
+}
+
+function analysisToDraft(analysis: MeetingAnalysis): MeetingAnalysisUpdate {
+  return {
+    executive_summary: analysis.executive_summary,
+    topics: analysis.topics,
+    decisions: analysis.decisions,
+    tasks: analysis.tasks,
+    risks: analysis.risks,
+    open_questions: analysis.open_questions,
+    minutes_markdown: analysis.minutes_markdown,
+  };
+}
+
+function linesToList(value: string) {
+  return value.split("\n");
+}
+
+function cleanList(items: string[]) {
+  return items.map((item) => item.trim()).filter(Boolean);
 }
 
 function formatBytes(bytes?: number | null) {

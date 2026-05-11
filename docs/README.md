@@ -22,7 +22,8 @@ Para entender o projeto do zero:
 3. [Fase 1 - Upload real e preparacao de audio](./phases/phase-1-media-upload.md)
 4. [Fase 2 - Transcricao real](./phases/phase-2-transcription.md)
 5. [Fase 3 - Geracao de ata e tarefas com IA](./phases/phase-3-minutes-generation.md)
-6. [Stack tecnica escolhida](./architecture/stack.md)
+6. [Fase 4 - Editor de ata e tarefas](./phases/phase-4-human-review-editor.md)
+7. [Stack tecnica escolhida](./architecture/stack.md)
 
 ## Status das fases
 
@@ -32,12 +33,12 @@ Para entender o projeto do zero:
 | Fase 1 | [phase-1-media-upload.md](./phases/phase-1-media-upload.md) | Concluida | Upload real de audio/video e preparacao do audio com FFmpeg. |
 | Fase 2 | [phase-2-transcription.md](./phases/phase-2-transcription.md) | Concluida | Camada de transcricao real com Gemini e modo mock para testes. |
 | Fase 3 | [phase-3-minutes-generation.md](./phases/phase-3-minutes-generation.md) | Concluida | Geracao estruturada de ata, tarefas e prioridades por IA. |
+| Fase 4 | [phase-4-human-review-editor.md](./phases/phase-4-human-review-editor.md) | Concluida | Editor para revisao humana de ata, resumo, listas e tarefas. |
 
 ## Proximas fases previstas
 
 | Fase | Objetivo |
 | --- | --- |
-| Fase 4 | Criar editor de ata e tarefas para revisao humana. |
 | Fase 5 | Exportar ata em PDF. |
 | Fase 6 | Processamento assincrono com filas. |
 | Fase 7 | Banco de dados PostgreSQL. |
@@ -75,6 +76,6 @@ Estrutura recomendada:
 
 ## Estado atual do MVP
 
-O MVP ja consegue receber arquivo de reuniao, preparar audio real, transcrever com Gemini e gerar ata/tarefas estruturadas com Gemini.
+O MVP ja consegue receber arquivo de reuniao, preparar audio real, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini e permitir revisao humana antes do uso final.
 
 As Fases 2 e 3 foram validadas em fluxo real no dia 2026-05-11, com audio de teste, transcricao Gemini e geracao de ata/tarefas Gemini.

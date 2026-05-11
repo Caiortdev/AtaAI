@@ -7,6 +7,7 @@ from app.config import Settings, get_settings
 from app.domain import (
     HealthResponse,
     Meeting,
+    MeetingAnalysisUpdate,
     MeetingCreate,
     MeetingListResponse,
     ProcessMeetingRequest,
@@ -172,3 +173,28 @@ def process_meeting(
 
     processed = processor.process(meeting, payload)
     return repository.save(processed)
+
+
+@app.patch("/api/meetings/{meeting_id}/analysis", response_model=Meeting)
+def update_meeting_analysis(
+    meeting_id: str,
+    payload: MeetingAnalysisUpdate,
+    repository: MeetingRepository = Depends(get_repository),
+) -> Meeting:
+    meeting = repository.get(meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
+    if meeting.analysis is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gere uma ata antes de revisar o conteudo.",
+        )
+
+    meeting.analysis.executive_summary = payload.executive_summary
+    meeting.analysis.topics = payload.topics
+    meeting.analysis.decisions = payload.decisions
+    meeting.analysis.tasks = payload.tasks
+    meeting.analysis.risks = payload.risks
+    meeting.analysis.open_questions = payload.open_questions
+    meeting.analysis.minutes_markdown = payload.minutes_markdown
+    return repository.save(meeting)

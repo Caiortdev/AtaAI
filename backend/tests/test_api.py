@@ -141,6 +141,89 @@ def test_processing_completes_with_mock_transcription_and_minutes(tmp_path):
     assert payload["analysis"]["transcript"]
 
 
+def test_updates_generated_analysis_for_human_review(tmp_path):
+    from app.main import get_media_service
+
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
+        get_settings()
+    )
+    meeting = client.post(
+        "/api/meetings",
+        json={
+            "title": "Reuniao teste",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+    client.post(
+        f"/api/meetings/{meeting['id']}/upload",
+        files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
+    )
+    processed = client.post(
+        f"/api/meetings/{meeting['id']}/process",
+        json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
+    ).json()
+
+    analysis = processed["analysis"]
+    first_task = analysis["tasks"][0]
+    first_task["title"] = "Tarefa revisada pelo usuario"
+    first_task["priority"] = "high"
+    first_task["status"] = "approved"
+    payload = {
+        "executive_summary": "Resumo revisado pelo usuario.",
+        "topics": ["Topico revisado"],
+        "decisions": ["Decisao revisada"],
+        "tasks": [first_task],
+        "risks": ["Risco revisado"],
+        "open_questions": ["Pergunta revisada"],
+        "minutes_markdown": "# Ata revisada\n\nConteudo revisado.",
+    }
+
+    response = client.patch(f"/api/meetings/{meeting['id']}/analysis", json=payload)
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["analysis"]["executive_summary"] == "Resumo revisado pelo usuario."
+    assert updated["analysis"]["minutes_markdown"].startswith("# Ata revisada")
+    assert updated["analysis"]["tasks"][0]["title"] == "Tarefa revisada pelo usuario"
+    assert updated["analysis"]["tasks"][0]["priority"] == "high"
+    assert updated["analysis"]["tasks"][0]["status"] == "approved"
+    assert updated["analysis"]["transcript"] == analysis["transcript"]
+
+
+def test_cannot_update_analysis_before_generation(tmp_path):
+    client = make_client(tmp_path)
+    meeting = client.post(
+        "/api/meetings",
+        json={
+            "title": "Reuniao sem ata",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+
+    response = client.patch(
+        f"/api/meetings/{meeting['id']}/analysis",
+        json={
+            "executive_summary": "Resumo",
+            "topics": [],
+            "decisions": [],
+            "tasks": [],
+            "risks": [],
+            "open_questions": [],
+            "minutes_markdown": "# Ata",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Gere uma ata" in response.json()["detail"]
+
+
 def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     from app.main import get_media_service
 

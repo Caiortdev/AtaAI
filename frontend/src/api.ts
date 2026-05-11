@@ -1,4 +1,4 @@
-import type { AnalysisMode, Meeting, MeetingCreate } from "./types";
+import type { AnalysisMode, Meeting, MeetingAnalysisUpdate, MeetingCreate } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 
@@ -49,5 +49,15 @@ export async function processMeeting(
   return request<Meeting>(`/api/meetings/${meetingId}/process`, {
     method: "POST",
     body: JSON.stringify({ mode, preset }),
+  });
+}
+
+export async function updateMeetingAnalysis(
+  meetingId: string,
+  payload: MeetingAnalysisUpdate,
+): Promise<Meeting> {
+  return request<Meeting>(`/api/meetings/${meetingId}/analysis`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
   });
 }

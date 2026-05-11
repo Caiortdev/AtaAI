@@ -10,6 +10,7 @@ Esta pasta documenta a evolucao do MVP por fases. Cada fase explica o objetivo, 
 | Fase 1 | [phase-1-media-upload.md](./phase-1-media-upload.md) | Concluida |
 | Fase 2 | [phase-2-transcription.md](./phase-2-transcription.md) | Concluida |
 | Fase 3 | [phase-3-minutes-generation.md](./phase-3-minutes-generation.md) | Concluida |
+| Fase 4 | [phase-4-human-review-editor.md](./phase-4-human-review-editor.md) | Concluida |
 
 ## Como atualizar
 
