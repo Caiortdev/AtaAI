@@ -224,6 +224,60 @@ def test_cannot_update_analysis_before_generation(tmp_path):
     assert "Gere uma ata" in response.json()["detail"]
 
 
+def test_exports_generated_analysis_as_pdf(tmp_path):
+    from app.main import get_media_service
+
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
+        get_settings()
+    )
+    meeting = client.post(
+        "/api/meetings",
+        json={
+            "title": "Reuniao PDF",
+            "client_name": "Cliente",
+            "participants": ["Caio", "Cliente"],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+    client.post(
+        f"/api/meetings/{meeting['id']}/upload",
+        files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
+    )
+    client.post(
+        f"/api/meetings/{meeting['id']}/process",
+        json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
+    )
+
+    response = client.get(f"/api/meetings/{meeting['id']}/analysis.pdf")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"] == 'attachment; filename="ata-reuniao-pdf.pdf"'
+    assert response.content.startswith(b"%PDF-1.4")
+    assert b"%%EOF" in response.content
+
+
+def test_cannot_export_pdf_before_analysis_exists(tmp_path):
+    client = make_client(tmp_path)
+    meeting = client.post(
+        "/api/meetings",
+        json={
+            "title": "Reuniao sem PDF",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+
+    response = client.get(f"/api/meetings/{meeting['id']}/analysis.pdf")
+
+    assert response.status_code == 400
+    assert "Gere uma ata" in response.json()["detail"]
+
+
 def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     from app.main import get_media_service
 

@@ -64,9 +64,11 @@ Esta primeira base ja inclui:
 - transcricao mock para testes automatizados;
 - geracao de ata/tarefas plugavel via Gemini quando `GEMINI_API_KEY` estiver configurada;
 - geracao mock de ata/tarefas para testes automatizados;
+- revisao humana da ata e das tarefas;
+- exportacao da ata revisada em PDF;
 - tela inicial do MVP em React.
 
-Redis/Celery, PostgreSQL, storage externo e exportacao serao adicionados nas proximas etapas.
+Redis/Celery, PostgreSQL e storage externo serao adicionados nas proximas etapas.
 
 ## Geracao de ata e tarefas
 

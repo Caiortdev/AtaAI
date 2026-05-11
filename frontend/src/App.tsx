@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   createMeeting,
+  exportMeetingPdf,
   listMeetings,
   processMeeting,
   updateMeetingAnalysis,
@@ -425,6 +426,7 @@ function AnalysisView({ meeting }: { meeting: Meeting }) {
     analysis ? analysisToDraft(analysis) : null,
   );
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!analysis) {
@@ -434,6 +436,7 @@ function AnalysisView({ meeting }: { meeting: Meeting }) {
     setDraft(analysisToDraft(analysis));
     setIsEditing(false);
     setSaveError(null);
+    setExportError(null);
   }, [analysis, meeting.id]);
 
   const saveMutation = useMutation({
@@ -444,6 +447,14 @@ function AnalysisView({ meeting }: { meeting: Meeting }) {
       await queryClient.invalidateQueries({ queryKey: ["meetings"] });
     },
     onError: (mutationError) => setSaveError(mutationError.message),
+  });
+  const exportMutation = useMutation({
+    mutationFn: () => exportMeetingPdf(meeting.id),
+    onSuccess: ({ blob, filename }) => {
+      setExportError(null);
+      downloadBlob(blob, filename);
+    },
+    onError: (mutationError) => setExportError(mutationError.message),
   });
 
   if (!analysis) return null;
@@ -474,6 +485,11 @@ function AnalysisView({ meeting }: { meeting: Meeting }) {
     });
   }
 
+  function exportPdf() {
+    setExportError(null);
+    exportMutation.mutate();
+  }
+
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <Panel title="Ata gerada">
@@ -499,12 +515,26 @@ function AnalysisView({ meeting }: { meeting: Meeting }) {
                 </button>
               </>
             ) : (
-              <button className="button-secondary" onClick={startEditing}>
-                Revisar ata
-              </button>
+              <>
+                <button
+                  className="button-secondary"
+                  disabled={exportMutation.isPending}
+                  onClick={exportPdf}
+                >
+                  {exportMutation.isPending ? "Exportando..." : "Exportar PDF"}
+                </button>
+                <button className="button-secondary" onClick={startEditing}>
+                  Revisar ata
+                </button>
+              </>
             )}
           </div>
         </div>
+        {exportError ? (
+          <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+            {exportError}
+          </div>
+        ) : null}
         {saveError ? (
           <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
             {saveError}
@@ -790,6 +820,17 @@ function linesToList(value: string) {
 
 function cleanList(items: string[]) {
   return items.map((item) => item.trim()).filter(Boolean);
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 }
 
 function formatBytes(bytes?: number | null) {

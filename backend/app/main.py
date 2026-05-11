@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import Settings, get_settings
@@ -15,6 +15,7 @@ from app.domain import (
 )
 from app.media import MediaService, MediaValidationError
 from app.minutes import build_minutes_provider
+from app.pdf_export import generate_meeting_pdf, pdf_filename
 from app.processing import MeetingProcessor
 from app.repository import MeetingRepository
 from app.transcription import build_transcription_provider
@@ -198,3 +199,26 @@ def update_meeting_analysis(
     meeting.analysis.open_questions = payload.open_questions
     meeting.analysis.minutes_markdown = payload.minutes_markdown
     return repository.save(meeting)
+
+
+@app.get("/api/meetings/{meeting_id}/analysis.pdf")
+def export_meeting_analysis_pdf(
+    meeting_id: str,
+    repository: MeetingRepository = Depends(get_repository),
+) -> Response:
+    meeting = repository.get(meeting_id)
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
+    if meeting.analysis is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Gere uma ata antes de exportar o PDF.",
+        )
+
+    pdf = generate_meeting_pdf(meeting)
+    filename = pdf_filename(meeting)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
