@@ -89,13 +89,16 @@ class OpenAITranscriptionProvider(TranscriptionProvider):
                 "language": self.settings.transcription_language,
                 "prompt": prompt,
             }
-            response = httpx.post(
-                f"{self.settings.openai_base_url}/audio/transcriptions",
-                headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
-                data=data,
-                files=files,
-                timeout=180,
-            )
+            try:
+                response = httpx.post(
+                    f"{self.settings.openai_base_url}/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
+                    data=data,
+                    files=files,
+                    timeout=180,
+                )
+            except httpx.HTTPError as exc:
+                raise TranscriptionError(f"Falha de conexao na transcricao OpenAI: {exc}") from exc
 
         if response.status_code >= 400:
             detail = self._error_detail(response)
@@ -175,15 +178,18 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
                 "responseSchema": GEMINI_TRANSCRIPTION_SCHEMA,
             },
         }
-        response = httpx.post(
-            self._generate_content_url(self.settings.transcription_model),
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.settings.gemini_api_key,
-            },
-            json=payload,
-            timeout=180,
-        )
+        try:
+            response = httpx.post(
+                self._generate_content_url(self.settings.transcription_model),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.settings.gemini_api_key,
+                },
+                json=payload,
+                timeout=180,
+            )
+        except httpx.HTTPError as exc:
+            raise TranscriptionError(f"Falha de conexao na transcricao Gemini: {exc}") from exc
 
         if response.status_code >= 400:
             detail = self._error_detail(response)

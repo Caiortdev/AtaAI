@@ -8,8 +8,8 @@ Esta pasta documenta a evolucao do MVP por fases. Cada fase explica o objetivo, 
 | --- | --- | --- |
 | Fase 0 | [phase-0-foundation.md](./phase-0-foundation.md) | Concluida |
 | Fase 1 | [phase-1-media-upload.md](./phase-1-media-upload.md) | Concluida |
-| Fase 2 | [phase-2-transcription.md](./phase-2-transcription.md) | Implementada, pendente de chave |
-| Fase 3 | [phase-3-minutes-generation.md](./phase-3-minutes-generation.md) | Implementada, pendente de chave |
+| Fase 2 | [phase-2-transcription.md](./phase-2-transcription.md) | Concluida |
+| Fase 3 | [phase-3-minutes-generation.md](./phase-3-minutes-generation.md) | Concluida |
 
 ## Como atualizar
 

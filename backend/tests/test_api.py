@@ -28,11 +28,15 @@ class FakeMediaService(MediaService):
 
 
 def make_client(tmp_path, **settings_overrides):
+    gemini_api_key = settings_overrides.pop("gemini_api_key", None)
+    openai_api_key = settings_overrides.pop("openai_api_key", None)
     settings = Settings(
         storage_dir=tmp_path,
         ffmpeg_binary="missing-ffmpeg-for-test",
         ffprobe_binary="missing-ffprobe-for-test",
         local_media_tools_enabled=False,
+        gemini_api_key=gemini_api_key,
+        openai_api_key=openai_api_key,
         **settings_overrides,
     )
     app.dependency_overrides[get_settings] = lambda: settings

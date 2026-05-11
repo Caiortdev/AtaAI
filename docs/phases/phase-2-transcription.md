@@ -6,7 +6,7 @@ Nesta fase, o sistema passou a ter uma camada real de transcricao com Gemini, ca
 
 ## Status
 
-Implementada no codigo, mas ainda pendente de validacao real com Gemini porque falta configurar `GEMINI_API_KEY`.
+Concluida e validada com Gemini em fluxo real no dia 2026-05-11.
 
 ## Para que esta fase existe
 
@@ -24,9 +24,9 @@ Essa transcricao e a base para todo o resto do produto:
 
 Sem uma boa transcricao, a ata fica fragil.
 
-## O que o usuario conseguira fazer quando a chave estiver configurada
+## O que o usuario consegue fazer
 
-O usuario conseguira:
+O usuario consegue:
 
 - enviar audio ou video;
 - deixar o sistema preparar o audio;
@@ -65,6 +65,7 @@ O usuario conseguira:
   - provedor usado;
   - modelo usado.
 - Mensagem clara quando `GEMINI_API_KEY` nao esta configurada.
+- Tratamento amigavel para falhas de conexao com o provedor, evitando erro interno `500`.
 
 ## O que acontece por baixo dos panos
 
@@ -132,10 +133,46 @@ TRANSCRIPTION_PROVIDER=gemini
 
 - Teste automatizado com provedor `mock` concluindo processamento.
 - Teste automatizado com provedor `gemini` sem chave retornando erro claro.
+- Teste real com audio WAV contendo fala.
+- Teste real pelo contrato HTTP do backend: criar reuniao, enviar upload e processar.
+- Preparacao real do audio via FFmpeg para WAV mono 16kHz.
+- Chamada real ao Gemini `gemini-2.5-flash`.
+- Transcricao real salva na analise da reuniao.
+- Registro final com status `completed`.
 - Teste de build do frontend.
 - Teste de tipos do frontend.
 - Verificacao de lint do backend.
 - Verificacao visual basica da interface no navegador.
+
+## Resultado da validacao real
+
+Validacao executada em 2026-05-11.
+
+Entrada usada:
+
+- Reuniao: `Validacao API Fase 2 e 3 com Gemini`.
+- Cliente: `Acme`.
+- Arquivo: audio WAV de teste com fala sintetica.
+- Modo: `audio_only`.
+- Provedor: `gemini`.
+- Modelo: `gemini-2.5-flash`.
+
+Resultado:
+
+- Status final: `completed`.
+- Upload via API: `200`.
+- Etapas registradas:
+  - `Arquivo recebido`;
+  - `Validando midia com FFprobe`;
+  - `Audio preparado em WAV mono 16k`;
+  - `Transcricao gerada por gemini/gemini-2.5-flash`;
+  - `Ata e tarefas geradas por gemini/gemini-2.5-flash`.
+
+Trecho da transcricao real retornada:
+
+```text
+Reuniao com cliente Acme. O cliente pediu criar login com Google com prioridade alta para entregar sexta-feira. Tambem pediu revisar o layout do painel com prioridade media. A decisao foi iniciar pelo login com Google.
+```
 
 ## Resultado atual esperado sem chave
 
@@ -153,16 +190,7 @@ Mensagem esperada:
 GEMINI_API_KEY nao esta configurada. Configure a chave no backend/.env para usar transcricao real com Gemini.
 ```
 
-Isso e correto. Significa que a fase esta pronta no codigo, mas ainda nao pode chamar o provedor real.
-
-## O que falta para concluir operacionalmente
-
-- Configurar `GEMINI_API_KEY`.
-- Reiniciar a API.
-- Rodar teste com audio real.
-- Confirmar que o Gemini retorna uma transcricao real.
-- Confirmar que a transcricao aparece no frontend.
-- Marcar a fase como concluida e validada.
+Isso e correto para ambientes sem chave. No ambiente local validado, a chave foi configurada e o fluxo real concluiu com sucesso.
 
 ## O que ficou fora desta fase
 

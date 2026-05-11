@@ -160,15 +160,18 @@ class OpenAIMinutesProvider(MinutesProvider):
             raise MinutesGenerationError("A transcricao esta vazia; nao e possivel gerar a ata.")
 
         transcript = transcript[: self.settings.minutes_max_transcript_chars]
-        response = httpx.post(
-            f"{self.settings.openai_base_url}/responses",
-            headers={
-                "Authorization": f"Bearer {self.settings.openai_api_key}",
-                "Content-Type": "application/json",
-            },
-            json=self._request_payload(meeting, transcript),
-            timeout=180,
-        )
+        try:
+            response = httpx.post(
+                f"{self.settings.openai_base_url}/responses",
+                headers={
+                    "Authorization": f"Bearer {self.settings.openai_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=self._request_payload(meeting, transcript),
+                timeout=180,
+            )
+        except httpx.HTTPError as exc:
+            raise MinutesGenerationError(f"Falha de conexao ao gerar ata com OpenAI: {exc}") from exc
 
         if response.status_code >= 400:
             detail = self._error_detail(response)
@@ -269,15 +272,18 @@ class GeminiMinutesProvider(MinutesProvider):
             raise MinutesGenerationError("A transcricao esta vazia; nao e possivel gerar a ata.")
 
         transcript = transcript[: self.settings.minutes_max_transcript_chars]
-        response = httpx.post(
-            self._generate_content_url(self.settings.minutes_model),
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self.settings.gemini_api_key,
-            },
-            json=self._request_payload(meeting, transcript),
-            timeout=180,
-        )
+        try:
+            response = httpx.post(
+                self._generate_content_url(self.settings.minutes_model),
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self.settings.gemini_api_key,
+                },
+                json=self._request_payload(meeting, transcript),
+                timeout=180,
+            )
+        except httpx.HTTPError as exc:
+            raise MinutesGenerationError(f"Falha de conexao ao gerar ata com Gemini: {exc}") from exc
 
         if response.status_code >= 400:
             detail = self._error_detail(response)

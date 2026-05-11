@@ -6,7 +6,7 @@ Nesta fase, o sistema passou a transformar a transcricao da reuniao em uma ata e
 
 ## Status
 
-Implementada no codigo, mas pendente de validacao real com Gemini porque falta configurar `GEMINI_API_KEY`.
+Concluida e validada com Gemini em fluxo real no dia 2026-05-11.
 
 ## Para que esta fase existe
 
@@ -27,9 +27,9 @@ Esta fase existe para transformar o texto bruto da reuniao em informacao util:
 
 Essa e uma das fases centrais do produto, porque e aqui que a reuniao vira execucao.
 
-## O que o usuario conseguira fazer quando a chave estiver configurada
+## O que o usuario consegue fazer
 
-O usuario conseguira:
+O usuario consegue:
 
 - enviar uma reuniao;
 - gerar a transcricao;
@@ -69,6 +69,7 @@ O usuario conseguira:
 - Frontend exibindo provedor e modelo usados na geracao da ata.
 - Health check informando provedor/modelo da geracao de ata.
 - Falha amigavel quando `GEMINI_API_KEY` nao esta configurada.
+- Tratamento amigavel para falhas de conexao com o provedor, evitando erro interno `500`.
 
 ## O que acontece por baixo dos panos
 
@@ -135,9 +136,46 @@ MINUTES_PROVIDER=gemini
 - Teste automatizado com transcricao mock e ata mock concluindo processamento.
 - Teste automatizado com transcricao mock e ata Gemini sem chave retornando erro claro.
 - Teste automatizado com Gemini sem chave na transcricao retornando erro claro.
+- Teste real com audio WAV contendo fala.
+- Teste real pelo contrato HTTP do backend: criar reuniao, enviar upload e processar.
+- Chamada real ao Gemini `gemini-2.5-flash` para transcricao.
+- Chamada real ao Gemini `gemini-2.5-flash` para geracao de ata.
+- Resposta validada por Pydantic antes de salvar.
+- Ata real salva com resumo, decisoes, tarefas e prioridades.
+- Registro final com status `completed`.
 - `ruff check` aprovado.
 - `npm run build` aprovado.
 - `npm run lint` aprovado.
+
+## Resultado da validacao real
+
+Validacao executada em 2026-05-11.
+
+Entrada usada:
+
+- Reuniao: `Validacao API Fase 2 e 3 com Gemini`.
+- Cliente: `Acme`.
+- Arquivo: audio WAV de teste com fala sintetica.
+- Modo: `audio_only`.
+- Provedor de ata: `gemini`.
+- Modelo de ata: `gemini-2.5-flash`.
+
+Resultado:
+
+- Status final: `completed`.
+- Upload via API: `200`.
+- Resumo executivo gerado:
+
+```text
+A reuniao com o cliente Acme focou em duas solicitacoes principais: a implementacao de login com Google e a revisao do layout do painel. Foi decidido priorizar o desenvolvimento do login com Google.
+```
+
+Tarefas geradas:
+
+| Prioridade | Tarefa | Prazo |
+| --- | --- | --- |
+| high | Criar login com Google | sexta-feira |
+| medium | Revisar layout do painel | Nao informado |
 
 ## Resultado atual esperado sem chave
 
@@ -149,17 +187,7 @@ Mensagem esperada na geracao de ata:
 GEMINI_API_KEY nao esta configurada. Configure a chave no backend/.env para gerar ata e tarefas com Gemini.
 ```
 
-Isso e correto. Significa que a integracao esta pronta no codigo, mas nao pode chamar o provedor real.
-
-## O que falta para concluir operacionalmente
-
-- Configurar `GEMINI_API_KEY`.
-- Reiniciar a API.
-- Rodar o fluxo com uma reuniao real.
-- Confirmar que a transcricao real foi gerada.
-- Confirmar que a ata real foi gerada.
-- Confirmar que tarefas e prioridades fazem sentido.
-- Marcar a fase como concluida e validada.
+Isso e correto para ambientes sem chave. No ambiente local validado, a chave foi configurada e o fluxo real concluiu com sucesso.
 
 ## O que ficou fora desta fase
 
