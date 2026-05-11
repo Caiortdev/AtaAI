@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     transcription_chunk_seconds: int = 10 * 60
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
+    minutes_provider: str = "openai"
+    minutes_model: str = "gpt-4o-mini"
+    minutes_max_transcript_chars: int = 60000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

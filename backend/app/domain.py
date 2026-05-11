@@ -78,6 +78,8 @@ class MeetingAnalysis(BaseModel):
     transcript_provider: str = "mock"
     transcript_model: str = "mock"
     transcript_language: str | None = None
+    minutes_provider: str = "mock"
+    minutes_model: str = "mock"
     executive_summary: str
     topics: list[str]
     decisions: list[str]
@@ -120,3 +122,4 @@ class HealthResponse(BaseModel):
     service: str
     media_tools: dict[str, bool] = Field(default_factory=dict)
     transcription: dict[str, str | bool] = Field(default_factory=dict)
+    minutes: dict[str, str | bool] = Field(default_factory=dict)

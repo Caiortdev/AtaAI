@@ -1,12 +1,6 @@
-from app.domain import (
-    Meeting,
-    MeetingAnalysis,
-    MeetingStatus,
-    Priority,
-    ProcessMeetingRequest,
-    TaskItem,
-)
+from app.domain import Meeting, MeetingStatus, ProcessMeetingRequest
 from app.media import MediaProcessingError, MediaService
+from app.minutes import MinutesGenerationError, MinutesProvider
 from app.transcription import TranscriptionError, TranscriptionProvider
 
 
@@ -22,9 +16,11 @@ class MeetingProcessor:
         self,
         media_service: MediaService,
         transcription_provider: TranscriptionProvider,
+        minutes_provider: MinutesProvider,
     ) -> None:
         self.media_service = media_service
         self.transcription_provider = transcription_provider
+        self.minutes_provider = minutes_provider
 
     def process(self, meeting: Meeting, request: ProcessMeetingRequest) -> Meeting:
         meeting.status = MeetingStatus.processing
@@ -43,126 +39,15 @@ class MeetingProcessor:
             meeting.processing_steps.append(
                 f"Transcricao gerada por {transcription.provider}/{transcription.model}"
             )
-            analysis = self._analyze_placeholder(
-                meeting=meeting,
-                transcript=transcription.text,
-                transcript_provider=transcription.provider,
-                transcript_model=transcription.model,
-                transcript_language=transcription.language,
+            analysis = self.minutes_provider.generate(meeting=meeting, transcription=transcription)
+            meeting.processing_steps.append(
+                f"Ata e tarefas geradas por {analysis.minutes_provider}/{analysis.minutes_model}"
             )
 
             meeting.analysis = analysis
             meeting.status = MeetingStatus.completed
-            meeting.processing_steps.append("Ata e tarefas geradas")
-        except (MediaProcessingError, TranscriptionError) as exc:
+        except (MediaProcessingError, TranscriptionError, MinutesGenerationError) as exc:
             meeting.status = MeetingStatus.failed
             meeting.processing_error = str(exc)
             meeting.processing_steps.append("Processamento interrompido")
         return meeting
-
-    def _analyze_placeholder(
-        self,
-        meeting: Meeting,
-        transcript: str,
-        transcript_provider: str,
-        transcript_model: str,
-        transcript_language: str | None,
-    ) -> MeetingAnalysis:
-        tasks = [
-            TaskItem(
-                title="Corrigir fluxo de envio de relatorios",
-                description=(
-                    "Investigar e corrigir o problema no fluxo de envio de relatorios citado pelo cliente."
-                ),
-                priority=Priority.critical,
-                priority_reason=(
-                    "O cliente indicou bloqueio operacional e necessidade de resolucao ainda esta semana."
-                ),
-                owner="A definir",
-                due_date="Esta semana",
-                source_excerpt="a equipe operacional esta bloqueada",
-                source_timestamp="00:00:18",
-            ),
-            TaskItem(
-                title="Melhorar tela de acompanhamento de status",
-                description=(
-                    "Revisar a tela de acompanhamento para tornar os status mais claros para o cliente."
-                ),
-                priority=Priority.medium,
-                priority_reason="Solicitacao relevante, mas sem bloqueio imediato informado.",
-                owner="A definir",
-                due_date=None,
-                source_excerpt="melhorar a tela de acompanhamento",
-                source_timestamp="00:00:32",
-            ),
-            TaskItem(
-                title="Validar requisitos com o time interno",
-                description="Confirmar escopo tecnico e retornar ao cliente com prazo estimado.",
-                priority=Priority.high,
-                priority_reason="E um proximo passo combinado durante a reuniao.",
-                owner="A definir",
-                due_date="Antes do retorno ao cliente",
-                source_excerpt="validar os requisitos com o time interno",
-                source_timestamp="00:00:45",
-            ),
-        ]
-
-        minutes = self._build_minutes(meeting, tasks)
-        return MeetingAnalysis(
-            transcript=transcript,
-            transcript_provider=transcript_provider,
-            transcript_model=transcript_model,
-            transcript_language=transcript_language,
-            executive_summary=(
-                "A reuniao tratou de ajustes solicitados pelo cliente, com foco principal em um "
-                "bloqueio no envio de relatorios e melhorias na visibilidade dos status."
-            ),
-            topics=[
-                "Fluxo de envio de relatorios",
-                "Acompanhamento de status",
-                "Validacao interna de requisitos",
-            ],
-            decisions=[
-                "Priorizar a correcao do fluxo de envio de relatorios.",
-                "Validar requisitos internamente antes de confirmar prazo ao cliente.",
-            ],
-            tasks=tasks,
-            risks=[
-                "Bloqueio operacional do cliente caso o fluxo de relatorios nao seja corrigido.",
-                "Prazo ainda indefinido ate validacao tecnica interna.",
-            ],
-            open_questions=[
-                "Qual e a causa exata do bloqueio no envio de relatorios?",
-                "Quem sera o responsavel final por cada tarefa?",
-            ],
-            minutes_markdown=minutes,
-        )
-
-    def _build_minutes(self, meeting: Meeting, tasks: list[TaskItem]) -> str:
-        client = meeting.client_name or "Cliente nao informado"
-        participants = ", ".join(meeting.participants) if meeting.participants else "Nao informado"
-        task_lines = "\n".join(
-            f"- [{task.priority.value.upper()}] {task.title}: {task.description}"
-            for task in tasks
-        )
-        return f"""# Ata da reuniao: {meeting.title}
-
-## Informacoes gerais
-- Cliente: {client}
-- Participantes: {participants}
-- Preset: {meeting.preset}
-
-## Resumo executivo
-A reuniao registrou solicitacoes do cliente e proximos passos para transformar os pontos discutidos em tarefas executaveis.
-
-## Decisoes
-- Priorizar itens que bloqueiam a operacao do cliente.
-- Validar requisitos tecnicos antes de confirmar prazos finais.
-
-## Tarefas
-{task_lines}
-
-## Pendencias
-- Confirmar responsaveis.
-- Confirmar prazo tecnico apos analise interna.
-"""

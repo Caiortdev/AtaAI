@@ -47,6 +47,7 @@ def test_health(tmp_path):
     assert response.json()["status"] == "ok"
     assert response.json()["media_tools"] == {"ffmpeg": False, "ffprobe": False}
     assert response.json()["transcription"]["provider"] == "openai"
+    assert response.json()["minutes"]["provider"] == "openai"
 
 
 def test_rejects_unsupported_upload(tmp_path):
@@ -100,10 +101,10 @@ def test_processing_fails_clearly_without_media_tools(tmp_path):
     assert "FFprobe" in payload["processing_error"]
 
 
-def test_processing_completes_with_mock_transcription(tmp_path):
+def test_processing_completes_with_mock_transcription_and_minutes(tmp_path):
     from app.main import get_media_service
 
-    client = make_client(tmp_path, transcription_provider="mock")
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -132,6 +133,7 @@ def test_processing_completes_with_mock_transcription(tmp_path):
     payload = response.json()
     assert payload["status"] == "completed"
     assert payload["analysis"]["transcript_provider"] == "mock"
+    assert payload["analysis"]["minutes_provider"] == "mock"
     assert payload["analysis"]["transcript"]
 
 
@@ -167,6 +169,40 @@ def test_processing_fails_without_openai_key_after_audio_preparation(tmp_path):
     payload = response.json()
     assert payload["status"] == "failed"
     assert "OPENAI_API_KEY" in payload["processing_error"]
+
+
+def test_minutes_generation_fails_without_openai_key_after_mock_transcription(tmp_path):
+    from app.main import get_media_service
+
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="openai")
+    app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
+        get_settings()
+    )
+    meeting = client.post(
+        "/api/meetings",
+        json={
+            "title": "Reuniao teste",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+    upload_response = client.post(
+        f"/api/meetings/{meeting['id']}/upload",
+        files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
+    )
+    assert upload_response.status_code == 200
+
+    response = client.post(
+        f"/api/meetings/{meeting['id']}/process",
+        json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert "gerar ata e tarefas" in payload["processing_error"]
 
 
 def teardown_function():

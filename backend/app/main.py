@@ -13,6 +13,7 @@ from app.domain import (
     UploadedFileInfo,
 )
 from app.media import MediaService, MediaValidationError
+from app.minutes import build_minutes_provider
 from app.processing import MeetingProcessor
 from app.repository import MeetingRepository
 from app.transcription import build_transcription_provider
@@ -31,7 +32,8 @@ def get_processor(
     media_service: MediaService = Depends(get_media_service),
 ) -> MeetingProcessor:
     transcription_provider = build_transcription_provider(settings, media_service)
-    return MeetingProcessor(media_service, transcription_provider)
+    minutes_provider = build_minutes_provider(settings)
+    return MeetingProcessor(media_service, transcription_provider, minutes_provider)
 
 
 app = FastAPI(title="Gerador de Ata de Reuniao por IA", version="0.1.0")
@@ -60,6 +62,13 @@ def health(
             "model": settings.transcription_model,
             "configured": bool(settings.openai_api_key)
             if settings.transcription_provider == "openai"
+            else True,
+        },
+        minutes={
+            "provider": settings.minutes_provider,
+            "model": settings.minutes_model,
+            "configured": bool(settings.openai_api_key)
+            if settings.minutes_provider == "openai"
             else True,
         },
     )

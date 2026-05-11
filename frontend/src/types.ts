@@ -42,6 +42,8 @@ export type MeetingAnalysis = {
   transcript_provider: string;
   transcript_model: string;
   transcript_language?: string | null;
+  minutes_provider: string;
+  minutes_model: string;
   executive_summary: string;
   topics: string[];
   decisions: string[];

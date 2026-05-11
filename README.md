@@ -62,11 +62,23 @@ Esta primeira base ja inclui:
 - falha amigavel quando FFmpeg/FFprobe nao estao disponiveis;
 - transcricao real plugavel via OpenAI quando `OPENAI_API_KEY` estiver configurada;
 - transcricao mock para testes automatizados;
-- analise/geracao da ata ainda simulada;
-- geracao de ata e tarefas a partir de um pipeline plugavel;
+- geracao de ata/tarefas plugavel via OpenAI quando `OPENAI_API_KEY` estiver configurada;
+- geracao mock de ata/tarefas para testes automatizados;
 - tela inicial do MVP em React.
 
-Os conectores reais de LLM, Redis/Celery, PostgreSQL e storage serao adicionados nas proximas etapas.
+Redis/Celery, PostgreSQL, storage externo e exportacao serao adicionados nas proximas etapas.
+
+## Geracao de ata e tarefas
+
+O backend suporta geracao de ata por provedor configuravel:
+
+```text
+MINUTES_PROVIDER=openai
+MINUTES_MODEL=gpt-4o-mini
+OPENAI_API_KEY=sua-chave
+```
+
+Para testes automatizados, use `MINUTES_PROVIDER=mock`. Para geracao real de ata e tarefas, configure `OPENAI_API_KEY`.
 
 ## Dependencia de midia
 

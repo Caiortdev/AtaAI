@@ -412,6 +412,16 @@ function AnalysisView({ meeting }: { meeting: Meeting }) {
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
       <Panel title="Ata gerada">
+        <dl className="mb-3 grid grid-cols-2 gap-3 text-xs text-slate-600">
+          <div>
+            <dt className="font-semibold text-slate-500">Provedor</dt>
+            <dd>{analysis.minutes_provider}</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-slate-500">Modelo</dt>
+            <dd>{analysis.minutes_model}</dd>
+          </div>
+        </dl>
         <div className="prose-like whitespace-pre-wrap">{analysis.minutes_markdown}</div>
       </Panel>
 
