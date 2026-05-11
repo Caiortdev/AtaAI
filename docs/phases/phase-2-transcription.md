@@ -2,11 +2,11 @@
 
 ## Resumo em uma frase
 
-Nesta fase, o sistema passou a ter uma camada real de transcricao, capaz de enviar o audio preparado para um provedor externo e receber o texto falado na reuniao.
+Nesta fase, o sistema passou a ter uma camada real de transcricao com Gemini, capaz de enviar o audio preparado para a IA e receber o texto falado na reuniao.
 
 ## Status
 
-Implementada no codigo, mas ainda pendente de validacao real com OpenAI porque falta configurar `OPENAI_API_KEY`.
+Implementada no codigo, mas ainda pendente de validacao real com Gemini porque falta configurar `GEMINI_API_KEY`.
 
 ## Para que esta fase existe
 
@@ -30,7 +30,7 @@ O usuario conseguira:
 
 - enviar audio ou video;
 - deixar o sistema preparar o audio;
-- transcrever a fala da reuniao;
+- transcrever a fala da reuniao com Gemini;
 - ver a transcricao completa no frontend;
 - saber qual provedor e modelo foram usados;
 - usar a transcricao como base para a ata.
@@ -38,8 +38,9 @@ O usuario conseguira:
 ## O que ja foi entregue
 
 - Criacao da camada `TranscriptionProvider`.
-- Provedor `openai` para transcricao real.
+- Provedor `gemini` como padrao do projeto.
 - Provedor `mock` para testes e desenvolvimento sem custo.
+- Provedor `openai` mantido como fallback opcional.
 - Configuracao de:
   - provedor;
   - modelo;
@@ -48,6 +49,8 @@ O usuario conseguira:
   - tamanho maximo de arquivo para envio;
   - duracao dos trechos quando o audio precisa ser dividido.
 - Segmentacao automatica de audio quando o arquivo for maior que o limite configurado.
+- Envio do audio em WAV para o Gemini usando `generateContent`.
+- Resposta estruturada em JSON com o campo `text`.
 - Pipeline atualizado:
   - preparar audio;
   - transcrever audio;
@@ -61,7 +64,7 @@ O usuario conseguira:
   - transcricao completa;
   - provedor usado;
   - modelo usado.
-- Mensagem clara quando `OPENAI_API_KEY` nao esta configurada.
+- Mensagem clara quando `GEMINI_API_KEY` nao esta configurada.
 
 ## O que acontece por baixo dos panos
 
@@ -70,7 +73,7 @@ O usuario conseguira:
 3. A Fase 2 verifica qual provedor de transcricao esta configurado.
 4. Se o arquivo for pequeno, ele e enviado inteiro para transcricao.
 5. Se o arquivo for grande, ele e dividido em partes menores.
-6. Cada parte e enviada ao provedor.
+6. Cada parte e enviada ao Gemini.
 7. O sistema junta os textos retornados.
 8. A transcricao final e salva dentro da analise da reuniao.
 9. A ata e as tarefas usam essa transcricao como entrada.
@@ -80,24 +83,24 @@ O usuario conseguira:
 Arquivo: `backend/.env`
 
 ```text
-TRANSCRIPTION_PROVIDER=openai
-TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+TRANSCRIPTION_PROVIDER=gemini
+TRANSCRIPTION_MODEL=gemini-2.5-flash
 TRANSCRIPTION_LANGUAGE=pt
-TRANSCRIPTION_MAX_FILE_BYTES=25165824
+TRANSCRIPTION_MAX_FILE_BYTES=18874368
 TRANSCRIPTION_CHUNK_SECONDS=600
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
+GEMINI_API_KEY=
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 ```
 
 O que cada configuracao significa:
 
-- `TRANSCRIPTION_PROVIDER`: escolhe o provedor. Pode ser `openai` ou `mock`.
+- `TRANSCRIPTION_PROVIDER`: escolhe o provedor. Pode ser `gemini`, `openai` ou `mock`.
 - `TRANSCRIPTION_MODEL`: modelo usado para transcrever.
 - `TRANSCRIPTION_LANGUAGE`: idioma esperado da reuniao.
-- `TRANSCRIPTION_MAX_FILE_BYTES`: tamanho maximo de cada arquivo enviado ao provedor.
+- `TRANSCRIPTION_MAX_FILE_BYTES`: tamanho maximo de cada trecho enviado ao provedor.
 - `TRANSCRIPTION_CHUNK_SECONDS`: tamanho de cada trecho quando o audio precisa ser dividido.
-- `OPENAI_API_KEY`: chave necessaria para usar transcricao real da OpenAI.
-- `OPENAI_BASE_URL`: URL base da API usada pelo provedor.
+- `GEMINI_API_KEY`: chave necessaria para usar transcricao real com Gemini.
+- `GEMINI_BASE_URL`: URL base da API Gemini.
 
 ## Como testar sem chave real
 
@@ -114,8 +117,8 @@ Esse modo nao chama servico externo. Ele serve para testar o fluxo do app sem ga
 1. Configure a chave no arquivo `backend/.env`:
 
 ```text
-OPENAI_API_KEY=sua-chave-aqui
-TRANSCRIPTION_PROVIDER=openai
+GEMINI_API_KEY=sua-chave-aqui
+TRANSCRIPTION_PROVIDER=gemini
 ```
 
 2. Reinicie o backend.
@@ -128,7 +131,7 @@ TRANSCRIPTION_PROVIDER=openai
 ## Validacoes executadas
 
 - Teste automatizado com provedor `mock` concluindo processamento.
-- Teste automatizado com provedor `openai` sem chave retornando erro claro.
+- Teste automatizado com provedor `gemini` sem chave retornando erro claro.
 - Teste de build do frontend.
 - Teste de tipos do frontend.
 - Verificacao de lint do backend.
@@ -136,7 +139,7 @@ TRANSCRIPTION_PROVIDER=openai
 
 ## Resultado atual esperado sem chave
 
-Enquanto `OPENAI_API_KEY` estiver vazia, o sistema deve:
+Enquanto `GEMINI_API_KEY` estiver vazia, o sistema deve:
 
 1. aceitar o upload;
 2. preparar o audio com FFmpeg;
@@ -147,23 +150,23 @@ Enquanto `OPENAI_API_KEY` estiver vazia, o sistema deve:
 Mensagem esperada:
 
 ```text
-OPENAI_API_KEY nao esta configurada. Configure a chave no backend/.env para usar transcricao real.
+GEMINI_API_KEY nao esta configurada. Configure a chave no backend/.env para usar transcricao real com Gemini.
 ```
 
 Isso e correto. Significa que a fase esta pronta no codigo, mas ainda nao pode chamar o provedor real.
 
 ## O que falta para concluir operacionalmente
 
-- Configurar `OPENAI_API_KEY`.
+- Configurar `GEMINI_API_KEY`.
 - Reiniciar a API.
 - Rodar teste com audio real.
-- Confirmar que o provedor retorna uma transcricao real.
+- Confirmar que o Gemini retorna uma transcricao real.
 - Confirmar que a transcricao aparece no frontend.
 - Marcar a fase como concluida e validada.
 
 ## O que ficou fora desta fase
 
-Esta fase nao cria uma ata inteligente real. A ata ainda usa uma analise simulada.
+Esta fase nao cria uma ata inteligente real. A ata ainda depende da fase seguinte.
 
 Ficaram fora:
 
@@ -176,11 +179,13 @@ Ficaram fora:
 
 ## Referencia tecnica
 
-- OpenAI Audio Transcriptions: `https://platform.openai.com/docs/api-reference/audio/createTranscription`
+- Gemini API - Audio understanding: `https://ai.google.dev/gemini-api/docs/audio`
+- Gemini API - Generate content: `https://ai.google.dev/api/generate-content`
 
 ## Glossario rapido
 
 - **Transcricao**: transformar fala em texto.
+- **Gemini**: modelo de IA do Google usado como provedor principal neste projeto.
 - **Provedor**: servico usado para executar a transcricao.
 - **Modelo**: IA especifica usada pelo provedor.
 - **Mock**: modo de teste que simula uma resposta sem chamar servico real.

@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.config import Settings
 from app.domain import Meeting, MeetingAnalysis, Priority, TaskItem
-from app.transcription import TranscriptionResult
+from app.transcription import TranscriptionResult, extract_gemini_text, strip_json_fences
 
 
 class MinutesGenerationError(Exception):
@@ -253,10 +253,105 @@ class OpenAIMinutesProvider(MinutesProvider):
         return str(payload)
 
 
+class GeminiMinutesProvider(MinutesProvider):
+    def __init__(self, settings: Settings) -> None:
+        self.settings = settings
+
+    def generate(self, meeting: Meeting, transcription: TranscriptionResult) -> MeetingAnalysis:
+        if not self.settings.gemini_api_key:
+            raise MinutesGenerationError(
+                "GEMINI_API_KEY nao esta configurada. Configure a chave no backend/.env "
+                "para gerar ata e tarefas com Gemini."
+            )
+
+        transcript = transcription.text.strip()
+        if not transcript:
+            raise MinutesGenerationError("A transcricao esta vazia; nao e possivel gerar a ata.")
+
+        transcript = transcript[: self.settings.minutes_max_transcript_chars]
+        response = httpx.post(
+            self._generate_content_url(self.settings.minutes_model),
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.settings.gemini_api_key,
+            },
+            json=self._request_payload(meeting, transcript),
+            timeout=180,
+        )
+
+        if response.status_code >= 400:
+            detail = self._error_detail(response)
+            raise MinutesGenerationError(f"Falha ao gerar ata com Gemini: {detail}")
+
+        output_text = extract_gemini_text(response.json())
+        try:
+            payload = GeneratedMinutesPayload.model_validate_json(strip_json_fences(output_text))
+        except ValidationError as exc:
+            raise MinutesGenerationError(
+                "Gemini retornou uma estrutura invalida para a ata."
+            ) from exc
+
+        return build_meeting_analysis(
+            meeting=meeting,
+            transcription=transcription,
+            minutes_provider="gemini",
+            minutes_model=self.settings.minutes_model,
+            payload=payload,
+        )
+
+    def _request_payload(self, meeting: Meeting, transcript: str) -> dict:
+        metadata = {
+            "titulo": meeting.title,
+            "cliente": meeting.client_name or "",
+            "participantes": meeting.participants,
+            "observacoes": meeting.notes or "",
+            "preset": meeting.preset,
+        }
+        return {
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [
+                        {
+                            "text": (
+                                "Voce transforma transcricoes de reunioes com clientes em atas "
+                                "objetivas, tarefas acionaveis e prioridades justificadas. "
+                                "Nao invente informacoes. Quando responsavel, prazo ou timestamp "
+                                "nao forem citados, use string vazia. Retorne somente JSON valido "
+                                "no schema solicitado.\n\n"
+                                "Metadados da reuniao:\n"
+                                f"{json.dumps(metadata, ensure_ascii=False)}\n\n"
+                                "Transcricao:\n"
+                                f"{transcript}"
+                            )
+                        }
+                    ],
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "responseSchema": GEMINI_MINUTES_JSON_SCHEMA,
+            },
+        }
+
+    def _generate_content_url(self, model: str) -> str:
+        return f"{self.settings.gemini_base_url}/models/{model}:generateContent"
+
+    def _error_detail(self, response: httpx.Response) -> str:
+        try:
+            payload = response.json()
+        except ValueError:
+            return response.text[:500]
+        error = payload.get("error")
+        if isinstance(error, dict):
+            return str(error.get("message") or error)
+        return str(payload)
+
+
 def build_meeting_analysis(
     meeting: Meeting,
     transcription: TranscriptionResult,
-    minutes_provider: Literal["mock", "openai"],
+    minutes_provider: Literal["mock", "openai", "gemini"],
     minutes_model: str,
     payload: GeneratedMinutesPayload,
 ) -> MeetingAnalysis:
@@ -294,6 +389,8 @@ def build_minutes_provider(settings: Settings) -> MinutesProvider:
     provider = settings.minutes_provider.lower().strip()
     if provider == "mock":
         return MockMinutesProvider(settings)
+    if provider == "gemini":
+        return GeminiMinutesProvider(settings)
     if provider == "openai":
         return OpenAIMinutesProvider(settings)
     raise MinutesGenerationError(f"Provedor de ata desconhecido: {settings.minutes_provider}.")
@@ -335,6 +432,52 @@ MINUTES_JSON_SCHEMA = {
         "risks": {"type": "array", "items": {"type": "string"}},
         "open_questions": {"type": "array", "items": {"type": "string"}},
         "minutes_markdown": {"type": "string"},
+    },
+    "required": [
+        "executive_summary",
+        "topics",
+        "decisions",
+        "tasks",
+        "risks",
+        "open_questions",
+        "minutes_markdown",
+    ],
+}
+
+GEMINI_TASK_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "title": {"type": "STRING"},
+        "description": {"type": "STRING"},
+        "priority": {"type": "STRING", "enum": ["critical", "high", "medium", "low"]},
+        "priority_reason": {"type": "STRING"},
+        "owner": {"type": "STRING"},
+        "due_date": {"type": "STRING"},
+        "source_excerpt": {"type": "STRING"},
+        "source_timestamp": {"type": "STRING"},
+    },
+    "required": [
+        "title",
+        "description",
+        "priority",
+        "priority_reason",
+        "owner",
+        "due_date",
+        "source_excerpt",
+        "source_timestamp",
+    ],
+}
+
+GEMINI_MINUTES_JSON_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "executive_summary": {"type": "STRING"},
+        "topics": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "decisions": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "tasks": {"type": "ARRAY", "items": GEMINI_TASK_SCHEMA},
+        "risks": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "open_questions": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "minutes_markdown": {"type": "STRING"},
     },
     "required": [
         "executive_summary",

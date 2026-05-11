@@ -60,9 +60,9 @@ Esta primeira base ja inclui:
 - validacao de formato e tamanho do arquivo;
 - preparacao real de audio via FFmpeg/FFprobe quando os binarios estiverem configurados;
 - falha amigavel quando FFmpeg/FFprobe nao estao disponiveis;
-- transcricao real plugavel via OpenAI quando `OPENAI_API_KEY` estiver configurada;
+- transcricao real plugavel via Gemini quando `GEMINI_API_KEY` estiver configurada;
 - transcricao mock para testes automatizados;
-- geracao de ata/tarefas plugavel via OpenAI quando `OPENAI_API_KEY` estiver configurada;
+- geracao de ata/tarefas plugavel via Gemini quando `GEMINI_API_KEY` estiver configurada;
 - geracao mock de ata/tarefas para testes automatizados;
 - tela inicial do MVP em React.
 
@@ -73,12 +73,12 @@ Redis/Celery, PostgreSQL, storage externo e exportacao serao adicionados nas pro
 O backend suporta geracao de ata por provedor configuravel:
 
 ```text
-MINUTES_PROVIDER=openai
-MINUTES_MODEL=gpt-4o-mini
-OPENAI_API_KEY=sua-chave
+MINUTES_PROVIDER=gemini
+MINUTES_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=sua-chave
 ```
 
-Para testes automatizados, use `MINUTES_PROVIDER=mock`. Para geracao real de ata e tarefas, configure `OPENAI_API_KEY`.
+Para testes automatizados, use `MINUTES_PROVIDER=mock`. Para geracao real de ata e tarefas, configure `GEMINI_API_KEY`.
 
 ## Dependencia de midia
 
@@ -102,10 +102,10 @@ Sem essas ferramentas, o app aceita uploads validos, mas o processamento fica co
 O backend suporta transcricao por provedor configuravel:
 
 ```text
-TRANSCRIPTION_PROVIDER=openai
-TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe
+TRANSCRIPTION_PROVIDER=gemini
+TRANSCRIPTION_MODEL=gemini-2.5-flash
 TRANSCRIPTION_LANGUAGE=pt
-OPENAI_API_KEY=sua-chave
+GEMINI_API_KEY=sua-chave
 ```
 
-Para testes automatizados, use `TRANSCRIPTION_PROVIDER=mock`. Para transcricao real, configure `OPENAI_API_KEY`.
+Para testes automatizados, use `TRANSCRIPTION_PROVIDER=mock`. Para transcricao real, configure `GEMINI_API_KEY`.

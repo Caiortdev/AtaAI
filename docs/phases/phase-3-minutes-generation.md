@@ -2,11 +2,11 @@
 
 ## Resumo em uma frase
 
-Nesta fase, o sistema passou a transformar a transcricao da reuniao em uma ata estruturada, com resumo, decisoes, tarefas, prioridades, riscos e pendencias.
+Nesta fase, o sistema passou a transformar a transcricao da reuniao em uma ata estruturada com Gemini, incluindo resumo, decisoes, tarefas, prioridades, riscos e pendencias.
 
 ## Status
 
-Implementada no codigo, mas pendente de validacao real com OpenAI porque falta configurar `OPENAI_API_KEY`.
+Implementada no codigo, mas pendente de validacao real com Gemini porque falta configurar `GEMINI_API_KEY`.
 
 ## Para que esta fase existe
 
@@ -33,7 +33,7 @@ O usuario conseguira:
 
 - enviar uma reuniao;
 - gerar a transcricao;
-- gerar uma ata com IA real;
+- gerar uma ata com Gemini;
 - ver as tarefas separadas automaticamente;
 - revisar prioridades sugeridas;
 - ver decisoes e pendencias em secoes separadas;
@@ -42,11 +42,12 @@ O usuario conseguira:
 ## O que ja foi entregue
 
 - Criacao da camada `MinutesProvider`.
-- Provedor `openai` para gerar ata real.
+- Provedor `gemini` como padrao do projeto.
 - Provedor `mock` para testes e desenvolvimento sem custo.
+- Provedor `openai` mantido como fallback opcional.
 - Saida estruturada com JSON Schema.
 - Validacao da resposta com Pydantic.
-- Geração dos seguintes campos:
+- Geracao dos seguintes campos:
   - resumo executivo;
   - topicos;
   - decisoes;
@@ -67,14 +68,14 @@ O usuario conseguira:
   - salvar tudo em `MeetingAnalysis`.
 - Frontend exibindo provedor e modelo usados na geracao da ata.
 - Health check informando provedor/modelo da geracao de ata.
-- Falha amigavel quando `OPENAI_API_KEY` nao esta configurada.
+- Falha amigavel quando `GEMINI_API_KEY` nao esta configurada.
 
 ## O que acontece por baixo dos panos
 
 1. A Fase 1 prepara o audio.
 2. A Fase 2 gera a transcricao.
 3. A Fase 3 recebe a transcricao.
-4. O backend monta um pedido para o modelo de IA.
+4. O backend monta um pedido para o Gemini.
 5. O pedido inclui metadados da reuniao e transcricao.
 6. A IA deve responder seguindo um JSON Schema.
 7. O backend valida a resposta.
@@ -86,20 +87,20 @@ O usuario conseguira:
 Arquivo: `backend/.env`
 
 ```text
-MINUTES_PROVIDER=openai
-MINUTES_MODEL=gpt-4o-mini
+MINUTES_PROVIDER=gemini
+MINUTES_MODEL=gemini-2.5-flash
 MINUTES_MAX_TRANSCRIPT_CHARS=60000
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
+GEMINI_API_KEY=
+GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 ```
 
 O que cada configuracao significa:
 
-- `MINUTES_PROVIDER`: escolhe o provedor. Pode ser `openai` ou `mock`.
+- `MINUTES_PROVIDER`: escolhe o provedor. Pode ser `gemini`, `openai` ou `mock`.
 - `MINUTES_MODEL`: modelo usado para gerar ata e tarefas.
 - `MINUTES_MAX_TRANSCRIPT_CHARS`: limite de caracteres da transcricao enviados ao modelo.
-- `OPENAI_API_KEY`: chave necessaria para usar a IA real.
-- `OPENAI_BASE_URL`: URL base da API usada pelo provedor.
+- `GEMINI_API_KEY`: chave necessaria para usar a IA real com Gemini.
+- `GEMINI_BASE_URL`: URL base da API Gemini.
 
 ## Como testar sem chave real
 
@@ -117,9 +118,9 @@ Esse modo permite testar o fluxo completo sem chamar servicos externos.
 1. Configure a chave no arquivo `backend/.env`:
 
 ```text
-OPENAI_API_KEY=sua-chave-aqui
-TRANSCRIPTION_PROVIDER=openai
-MINUTES_PROVIDER=openai
+GEMINI_API_KEY=sua-chave-aqui
+TRANSCRIPTION_PROVIDER=gemini
+MINUTES_PROVIDER=gemini
 ```
 
 2. Reinicie o backend.
@@ -132,27 +133,27 @@ MINUTES_PROVIDER=openai
 ## Validacoes executadas
 
 - Teste automatizado com transcricao mock e ata mock concluindo processamento.
-- Teste automatizado com transcricao mock e ata OpenAI sem chave retornando erro claro.
-- Teste automatizado com OpenAI sem chave na transcricao retornando erro claro.
+- Teste automatizado com transcricao mock e ata Gemini sem chave retornando erro claro.
+- Teste automatizado com Gemini sem chave na transcricao retornando erro claro.
 - `ruff check` aprovado.
 - `npm run build` aprovado.
 - `npm run lint` aprovado.
 
 ## Resultado atual esperado sem chave
 
-Enquanto `OPENAI_API_KEY` estiver vazia, o sistema deve falhar com uma mensagem clara quando tentar usar IA real.
+Enquanto `GEMINI_API_KEY` estiver vazia, o sistema deve falhar com uma mensagem clara quando tentar usar IA real.
 
 Mensagem esperada na geracao de ata:
 
 ```text
-OPENAI_API_KEY nao esta configurada. Configure a chave no backend/.env para gerar ata e tarefas com IA real.
+GEMINI_API_KEY nao esta configurada. Configure a chave no backend/.env para gerar ata e tarefas com Gemini.
 ```
 
 Isso e correto. Significa que a integracao esta pronta no codigo, mas nao pode chamar o provedor real.
 
 ## O que falta para concluir operacionalmente
 
-- Configurar `OPENAI_API_KEY`.
+- Configurar `GEMINI_API_KEY`.
 - Reiniciar a API.
 - Rodar o fluxo com uma reuniao real.
 - Confirmar que a transcricao real foi gerada.
@@ -176,14 +177,15 @@ Ficaram fora:
 
 ## Referencias tecnicas
 
-- OpenAI Structured Outputs: `https://platform.openai.com/docs/guides/structured-outputs`
-- OpenAI Responses API: `https://platform.openai.com/docs/api-reference/responses`
+- Gemini API - Structured output: `https://ai.google.dev/gemini-api/docs/structured-output`
+- Gemini API - Generate content: `https://ai.google.dev/api/generate-content`
 
 ## Glossario rapido
 
 - **LLM**: modelo de linguagem usado para interpretar texto e gerar respostas.
+- **Gemini**: modelo de IA do Google usado como provedor principal neste projeto.
 - **JSON Schema**: contrato que define exatamente o formato esperado da resposta.
-- **Structured Outputs**: recurso que faz o modelo responder seguindo um schema.
+- **Saida estruturada**: resposta da IA seguindo um schema.
 - **Pydantic**: biblioteca Python usada para validar dados estruturados.
 - **Markdown**: formato simples de texto usado para montar a ata.
 - **Ata estruturada**: ata separada em campos claros, como resumo, decisoes e tarefas.

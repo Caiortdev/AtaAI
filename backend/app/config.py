@@ -14,19 +14,21 @@ class Settings(BaseSettings):
     ffmpeg_binary: str = "ffmpeg"
     ffprobe_binary: str = "ffprobe"
     local_media_tools_enabled: bool = True
-    transcription_provider: str = "openai"
-    transcription_model: str = "gpt-4o-mini-transcribe"
+    transcription_provider: str = "gemini"
+    transcription_model: str = "gemini-2.5-flash"
     transcription_language: str = "pt"
     transcription_prompt: str = (
         "Transcreva em portugues do Brasil. Preserve termos tecnicos, nomes de pessoas, "
         "nomes de empresas, tarefas, prazos e decisoes mencionadas na reuniao."
     )
-    transcription_max_file_bytes: int = 24 * 1024 * 1024
+    transcription_max_file_bytes: int = 18 * 1024 * 1024
     transcription_chunk_seconds: int = 10 * 60
+    gemini_api_key: str | None = None
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
     openai_api_key: str | None = None
     openai_base_url: str = "https://api.openai.com/v1"
-    minutes_provider: str = "openai"
-    minutes_model: str = "gpt-4o-mini"
+    minutes_provider: str = "gemini"
+    minutes_model: str = "gemini-2.5-flash"
     minutes_max_transcript_chars: int = 60000
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")

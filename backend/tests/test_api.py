@@ -46,8 +46,8 @@ def test_health(tmp_path):
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
     assert response.json()["media_tools"] == {"ffmpeg": False, "ffprobe": False}
-    assert response.json()["transcription"]["provider"] == "openai"
-    assert response.json()["minutes"]["provider"] == "openai"
+    assert response.json()["transcription"]["provider"] == "gemini"
+    assert response.json()["minutes"]["provider"] == "gemini"
 
 
 def test_rejects_unsupported_upload(tmp_path):
@@ -137,10 +137,10 @@ def test_processing_completes_with_mock_transcription_and_minutes(tmp_path):
     assert payload["analysis"]["transcript"]
 
 
-def test_processing_fails_without_openai_key_after_audio_preparation(tmp_path):
+def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     from app.main import get_media_service
 
-    client = make_client(tmp_path, transcription_provider="openai", openai_api_key=None)
+    client = make_client(tmp_path, transcription_provider="gemini", gemini_api_key=None)
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -168,13 +168,13 @@ def test_processing_fails_without_openai_key_after_audio_preparation(tmp_path):
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "failed"
-    assert "OPENAI_API_KEY" in payload["processing_error"]
+    assert "GEMINI_API_KEY" in payload["processing_error"]
 
 
-def test_minutes_generation_fails_without_openai_key_after_mock_transcription(tmp_path):
+def test_minutes_generation_fails_without_gemini_key_after_mock_transcription(tmp_path):
     from app.main import get_media_service
 
-    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="openai")
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="gemini")
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -202,7 +202,7 @@ def test_minutes_generation_fails_without_openai_key_after_mock_transcription(tm
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "failed"
-    assert "gerar ata e tarefas" in payload["processing_error"]
+    assert "GEMINI_API_KEY" in payload["processing_error"]
 
 
 def teardown_function():

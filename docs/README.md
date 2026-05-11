@@ -30,7 +30,7 @@ Para entender o projeto do zero:
 | --- | --- | --- | --- |
 | Fase 0 | [phase-0-foundation.md](./phases/phase-0-foundation.md) | Concluida | Fundacao do MVP com backend, frontend e processamento simulado. |
 | Fase 1 | [phase-1-media-upload.md](./phases/phase-1-media-upload.md) | Concluida | Upload real de audio/video e preparacao do audio com FFmpeg. |
-| Fase 2 | [phase-2-transcription.md](./phases/phase-2-transcription.md) | Implementada, pendente de chave | Camada de transcricao real com OpenAI e modo mock para testes. |
+| Fase 2 | [phase-2-transcription.md](./phases/phase-2-transcription.md) | Implementada, pendente de chave | Camada de transcricao real com Gemini e modo mock para testes. |
 | Fase 3 | [phase-3-minutes-generation.md](./phases/phase-3-minutes-generation.md) | Implementada, pendente de chave | Geracao estruturada de ata, tarefas e prioridades por IA. |
 
 ## Proximas fases previstas
@@ -77,4 +77,4 @@ Estrutura recomendada:
 
 O MVP ja consegue receber arquivo de reuniao, preparar audio real, transcrever por provedor plugavel e gerar ata/tarefas por provedor plugavel.
 
-O bloqueio atual para concluir operacionalmente as Fases 2 e 3 e configurar `OPENAI_API_KEY` no backend.
+O bloqueio atual para concluir operacionalmente as Fases 2 e 3 e configurar `GEMINI_API_KEY` no backend.

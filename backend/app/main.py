@@ -60,18 +60,26 @@ def health(
         transcription={
             "provider": settings.transcription_provider,
             "model": settings.transcription_model,
-            "configured": bool(settings.openai_api_key)
-            if settings.transcription_provider == "openai"
-            else True,
+            "configured": provider_configured(
+                settings.transcription_provider,
+                settings,
+            ),
         },
         minutes={
             "provider": settings.minutes_provider,
             "model": settings.minutes_model,
-            "configured": bool(settings.openai_api_key)
-            if settings.minutes_provider == "openai"
-            else True,
+            "configured": provider_configured(settings.minutes_provider, settings),
         },
     )
+
+
+def provider_configured(provider: str, settings: Settings) -> bool:
+    normalized = provider.lower().strip()
+    if normalized == "gemini":
+        return bool(settings.gemini_api_key)
+    if normalized == "openai":
+        return bool(settings.openai_api_key)
+    return True
 
 
 @app.get("/api/meetings", response_model=MeetingListResponse)
