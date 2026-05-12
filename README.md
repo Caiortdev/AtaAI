@@ -13,6 +13,7 @@ MVP para capturar reunioes com clientes, processar audio/video, gerar transcrica
 - Processamento: fila local no MVP; Redis/Celery distribuido no futuro.
 - Banco atual: SQLite.
 - Banco arquitetado para migracao: PostgreSQL.
+- Autenticacao atual: cadastro/login local com sessao Bearer armazenada no SQLite.
 - Armazenamento futuro: storage S3-compatible.
 
 ## Estrutura
@@ -69,9 +70,10 @@ Esta primeira base ja inclui:
 - exportacao da ata revisada em PDF;
 - processamento em fila local para nao travar a requisicao enquanto a IA trabalha;
 - persistencia em SQLite com camada preparada para migrar para PostgreSQL;
+- cadastro, login e isolamento das reunioes por usuario;
 - tela inicial do MVP em React.
 
-Redis/Celery distribuido, PostgreSQL ativo e storage externo serao adicionados nas proximas etapas.
+Redis/Celery distribuido, PostgreSQL ativo, organizacoes/permissoes avancadas e storage externo serao adicionados nas proximas etapas.
 
 ## Geracao de ata e tarefas
 

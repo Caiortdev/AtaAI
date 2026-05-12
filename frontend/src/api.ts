@@ -1,12 +1,27 @@
-import type { AnalysisMode, Meeting, MeetingAnalysisUpdate, MeetingCreate } from "./types";
+import type {
+  AnalysisMode,
+  AuthPayload,
+  AuthSession,
+  Meeting,
+  MeetingAnalysisUpdate,
+  MeetingCreate,
+  RegisterPayload,
+  User,
+} from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
+let accessToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  accessToken = token;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {
       ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...init?.headers,
     },
   });
@@ -17,6 +32,29 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+export async function registerUser(payload: RegisterPayload): Promise<AuthSession> {
+  return request<AuthSession>("/api/auth/register", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function loginUser(payload: AuthPayload): Promise<AuthSession> {
+  return request<AuthSession>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getCurrentUser(): Promise<User> {
+  return request<User>("/api/auth/me");
+}
+
+export async function logoutUser(): Promise<void> {
+  await request<{ status: string }>("/api/auth/logout", { method: "POST" });
+  setAuthToken(null);
 }
 
 export async function listMeetings(): Promise<Meeting[]> {
@@ -63,7 +101,9 @@ export async function updateMeetingAnalysis(
 }
 
 export async function exportMeetingPdf(meetingId: string): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`${API_URL}/api/meetings/${meetingId}/analysis.pdf`);
+  const response = await fetch(`${API_URL}/api/meetings/${meetingId}/analysis.pdf`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
     throw new Error(error.detail ?? "Erro inesperado.");

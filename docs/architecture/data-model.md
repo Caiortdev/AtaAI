@@ -13,14 +13,38 @@ backend/storage/ataai.sqlite3
 Tabela atual:
 
 ```text
+users
+sessions
 meetings
 ```
 
-Campos:
+### `users`
+
+| Campo | Tipo | Uso |
+| --- | --- | --- |
+| `id` | TEXT | Identificador do usuario. |
+| `name` | TEXT | Nome exibido no app. |
+| `email` | TEXT | E-mail normalizado em minusculas. |
+| `password_hash` | TEXT | Hash PBKDF2 da senha. A senha pura nao e armazenada. |
+| `created_at` | TEXT | Data de criacao em ISO 8601. |
+| `updated_at` | TEXT | Ultima atualizacao em ISO 8601. |
+
+### `sessions`
+
+| Campo | Tipo | Uso |
+| --- | --- | --- |
+| `id` | TEXT | Identificador da sessao. |
+| `user_id` | TEXT | Usuario dono da sessao. |
+| `token_hash` | TEXT | Hash SHA-256 do token de acesso. |
+| `created_at` | TEXT | Data de criacao em ISO 8601. |
+| `expires_at` | TEXT | Data de expiracao da sessao. |
+
+### `meetings`
 
 | Campo | Tipo | Uso |
 | --- | --- | --- |
 | `id` | TEXT | Identificador da reuniao. |
+| `owner_id` | TEXT | Usuario dono da reuniao. |
 | `title` | TEXT | Titulo da reuniao para listagem e busca futura. |
 | `client_name` | TEXT | Nome do cliente. |
 | `status` | TEXT | Estado atual: draft, uploaded, queued, processing, completed ou failed. |
@@ -31,6 +55,10 @@ Campos:
 Indices:
 
 ```text
+idx_users_email
+idx_sessions_token_hash
+idx_sessions_user_id
+idx_meetings_owner_id
 idx_meetings_status
 idx_meetings_updated_at
 ```
@@ -60,6 +88,7 @@ Para o proximo passo real de producao, o caminho recomendado e comecar com `payl
 ```sql
 CREATE TABLE meetings (
   id UUID PRIMARY KEY,
+  owner_id UUID NOT NULL REFERENCES users(id),
   title TEXT NOT NULL,
   client_name TEXT,
   status TEXT NOT NULL,
@@ -68,6 +97,7 @@ CREATE TABLE meetings (
   payload JSONB NOT NULL
 );
 
+CREATE INDEX idx_meetings_owner_id ON meetings(owner_id);
 CREATE INDEX idx_meetings_status ON meetings(status);
 CREATE INDEX idx_meetings_updated_at ON meetings(updated_at);
 CREATE INDEX idx_meetings_payload_gin ON meetings USING GIN(payload);

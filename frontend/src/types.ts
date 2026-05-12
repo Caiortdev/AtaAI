@@ -3,6 +3,28 @@ export type AnalysisMode = "audio_only" | "audio_video";
 export type Priority = "critical" | "high" | "medium" | "low";
 export type MediaKind = "audio" | "video";
 
+export type User = {
+  id: string;
+  name: string;
+  email: string;
+  created_at: string;
+};
+
+export type AuthSession = {
+  access_token: string;
+  token_type: "bearer";
+  user: User;
+};
+
+export type AuthPayload = {
+  email: string;
+  password: string;
+};
+
+export type RegisterPayload = AuthPayload & {
+  name: string;
+};
+
 export type UploadedFileInfo = {
   original_name: string;
   stored_name: string;
@@ -55,6 +77,7 @@ export type MeetingAnalysis = {
 
 export type Meeting = {
   id: string;
+  owner_id?: string | null;
   title: string;
   client_name?: string | null;
   participants: string[];

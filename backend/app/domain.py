@@ -40,6 +40,30 @@ class MeetingCreate(BaseModel):
     consent_confirmed: bool = False
 
 
+class UserRegister(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    email: str = Field(min_length=5, max_length=180)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserLogin(BaseModel):
+    email: str = Field(min_length=5, max_length=180)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class UserPublic(BaseModel):
+    id: str
+    name: str
+    email: str
+    created_at: datetime
+
+
+class AuthToken(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    user: UserPublic
+
+
 class UploadedFileInfo(BaseModel):
     original_name: str
     stored_name: str
@@ -102,6 +126,7 @@ class MeetingAnalysisUpdate(BaseModel):
 
 class Meeting(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
+    owner_id: str | None = None
     title: str
     client_name: str | None = None
     participants: list[str] = Field(default_factory=list)

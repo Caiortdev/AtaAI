@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     database_backend: str = "sqlite"
     database_path: Path = Path("storage/ataai.sqlite3")
     database_url: str | None = None
+    auth_session_days: int = 30
     max_upload_bytes: int = 500 * 1024 * 1024
     max_media_duration_seconds: int = 3 * 60 * 60
     ffmpeg_binary: str = "ffmpeg"

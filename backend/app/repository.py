@@ -5,20 +5,45 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from app.auth import (
+    create_access_token,
+    hash_password,
+    hash_token,
+    normalize_email,
+    session_expiration,
+    verify_password,
+)
 from app.config import Settings
-from app.domain import Meeting, MeetingCreate, MeetingStatus, UploadedFileInfo
+from app.domain import Meeting, MeetingCreate, MeetingStatus, UploadedFileInfo, UserPublic, UserRegister
 
 
 class MeetingRepository(Protocol):
-    def list(self) -> list[Meeting]: ...
+    def list(self, owner_id: str | None = None) -> list[Meeting]: ...
 
-    def get(self, meeting_id: str) -> Meeting | None: ...
+    def get(self, meeting_id: str, owner_id: str | None = None) -> Meeting | None: ...
 
-    def create(self, payload: MeetingCreate) -> Meeting: ...
+    def create(self, payload: MeetingCreate, owner_id: str | None = None) -> Meeting: ...
 
-    def attach_file(self, meeting_id: str, file_info: UploadedFileInfo) -> Meeting: ...
+    def attach_file(
+        self,
+        meeting_id: str,
+        file_info: UploadedFileInfo,
+        owner_id: str | None = None,
+    ) -> Meeting: ...
 
     def save(self, meeting: Meeting) -> Meeting: ...
+
+
+class AuthRepository(Protocol):
+    def create_user(self, payload: UserRegister) -> UserPublic: ...
+
+    def verify_credentials(self, email: str, password: str) -> UserPublic | None: ...
+
+    def create_session(self, user_id: str, days: int) -> str: ...
+
+    def get_user_by_token(self, token: str) -> UserPublic | None: ...
+
+    def revoke_session(self, token: str) -> None: ...
 
 
 class JsonMeetingRepository:
@@ -29,28 +54,36 @@ class JsonMeetingRepository:
         self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.db_path = self.storage_dir / "meetings.json"
 
-    def list(self) -> list[Meeting]:
+    def list(self, owner_id: str | None = None) -> list[Meeting]:
         with self._lock:
             data = self._read()
-            return [Meeting.model_validate(item) for item in data]
+            meetings = [Meeting.model_validate(item) for item in data]
+            if owner_id is None:
+                return meetings
+            return [meeting for meeting in meetings if meeting.owner_id == owner_id]
 
-    def get(self, meeting_id: str) -> Meeting | None:
-        for meeting in self.list():
+    def get(self, meeting_id: str, owner_id: str | None = None) -> Meeting | None:
+        for meeting in self.list(owner_id):
             if meeting.id == meeting_id:
                 return meeting
         return None
 
-    def create(self, payload: MeetingCreate) -> Meeting:
+    def create(self, payload: MeetingCreate, owner_id: str | None = None) -> Meeting:
         with self._lock:
-            meeting = Meeting(**payload.model_dump())
+            meeting = Meeting(**payload.model_dump(), owner_id=owner_id)
             meetings = self.list()
             meetings.append(meeting)
             self._write(meetings)
             return meeting
 
-    def attach_file(self, meeting_id: str, file_info: UploadedFileInfo) -> Meeting:
+    def attach_file(
+        self,
+        meeting_id: str,
+        file_info: UploadedFileInfo,
+        owner_id: str | None = None,
+    ) -> Meeting:
         with self._lock:
-            meeting = self._require(meeting_id)
+            meeting = self._require(meeting_id, owner_id)
             meeting.file = file_info
             meeting.status = MeetingStatus.uploaded
             return self.save(meeting)
@@ -70,8 +103,8 @@ class JsonMeetingRepository:
             self._write(meetings)
             return meeting
 
-    def _require(self, meeting_id: str) -> Meeting:
-        meeting = self.get(meeting_id)
+    def _require(self, meeting_id: str, owner_id: str | None = None) -> Meeting:
+        meeting = self.get(meeting_id, owner_id)
         if meeting is None:
             raise KeyError(meeting_id)
         return meeting
@@ -94,30 +127,46 @@ class SQLiteMeetingRepository:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self._migrate()
 
-    def list(self) -> list[Meeting]:
+    def list(self, owner_id: str | None = None) -> list[Meeting]:
         with self._lock, self._connect() as connection:
-            rows = connection.execute(
-                "SELECT payload FROM meetings ORDER BY created_at ASC"
-            ).fetchall()
+            if owner_id is None:
+                rows = connection.execute(
+                    "SELECT payload FROM meetings ORDER BY created_at ASC"
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    "SELECT payload FROM meetings WHERE owner_id = ? ORDER BY created_at ASC",
+                    (owner_id,),
+                ).fetchall()
             return [Meeting.model_validate_json(row["payload"]) for row in rows]
 
-    def get(self, meeting_id: str) -> Meeting | None:
+    def get(self, meeting_id: str, owner_id: str | None = None) -> Meeting | None:
         with self._lock, self._connect() as connection:
+            query = "SELECT payload FROM meetings WHERE id = ?"
+            params: tuple[str, ...] = (meeting_id,)
+            if owner_id is not None:
+                query += " AND owner_id = ?"
+                params = (meeting_id, owner_id)
             row = connection.execute(
-                "SELECT payload FROM meetings WHERE id = ?",
-                (meeting_id,),
+                query,
+                params,
             ).fetchone()
             if row is None:
                 return None
             return Meeting.model_validate_json(row["payload"])
 
-    def create(self, payload: MeetingCreate) -> Meeting:
-        meeting = Meeting(**payload.model_dump())
+    def create(self, payload: MeetingCreate, owner_id: str | None = None) -> Meeting:
+        meeting = Meeting(**payload.model_dump(), owner_id=owner_id)
         return self.save(meeting)
 
-    def attach_file(self, meeting_id: str, file_info: UploadedFileInfo) -> Meeting:
+    def attach_file(
+        self,
+        meeting_id: str,
+        file_info: UploadedFileInfo,
+        owner_id: str | None = None,
+    ) -> Meeting:
         with self._lock:
-            meeting = self._require(meeting_id)
+            meeting = self._require(meeting_id, owner_id)
             meeting.file = file_info
             meeting.status = MeetingStatus.uploaded
             return self.save(meeting)
@@ -128,10 +177,11 @@ class SQLiteMeetingRepository:
             connection.execute(
                 """
                 INSERT INTO meetings (
-                    id, title, client_name, status, created_at, updated_at, payload
+                    id, owner_id, title, client_name, status, created_at, updated_at, payload
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
+                    owner_id = excluded.owner_id,
                     title = excluded.title,
                     client_name = excluded.client_name,
                     status = excluded.status,
@@ -140,6 +190,7 @@ class SQLiteMeetingRepository:
                 """,
                 (
                     meeting.id,
+                    meeting.owner_id,
                     meeting.title,
                     meeting.client_name,
                     meeting.status.value,
@@ -151,8 +202,8 @@ class SQLiteMeetingRepository:
             connection.commit()
             return meeting
 
-    def _require(self, meeting_id: str) -> Meeting:
-        meeting = self.get(meeting_id)
+    def _require(self, meeting_id: str, owner_id: str | None = None) -> Meeting:
+        meeting = self.get(meeting_id, owner_id)
         if meeting is None:
             raise KeyError(meeting_id)
         return meeting
@@ -168,6 +219,7 @@ class SQLiteMeetingRepository:
                 """
                 CREATE TABLE IF NOT EXISTS meetings (
                     id TEXT PRIMARY KEY,
+                    owner_id TEXT,
                     title TEXT NOT NULL,
                     client_name TEXT,
                     status TEXT NOT NULL,
@@ -176,6 +228,10 @@ class SQLiteMeetingRepository:
                     payload TEXT NOT NULL
                 )
                 """
+            )
+            self._ensure_column(connection, "meetings", "owner_id", "TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_meetings_owner_id ON meetings(owner_id)"
             )
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_meetings_status ON meetings(status)"
@@ -198,12 +254,13 @@ class SQLiteMeetingRepository:
             connection.execute(
                 """
                 INSERT INTO meetings (
-                    id, title, client_name, status, created_at, updated_at, payload
+                    id, owner_id, title, client_name, status, created_at, updated_at, payload
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     meeting.id,
+                    meeting.owner_id,
                     meeting.title,
                     meeting.client_name,
                     meeting.status.value,
@@ -213,6 +270,155 @@ class SQLiteMeetingRepository:
                 ),
             )
         connection.commit()
+
+    def _ensure_column(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        column_type: str,
+    ) -> None:
+        columns = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        if column_name in {column["name"] for column in columns}:
+            return
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+
+class SQLiteAuthRepository:
+    _lock = threading.RLock()
+
+    def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._migrate()
+
+    def create_user(self, payload: UserRegister) -> UserPublic:
+        now = datetime.now(UTC)
+        user_id = self._new_id()
+        email = normalize_email(payload.email)
+        with self._lock, self._connect() as connection:
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO users (id, name, email, password_hash, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        payload.name.strip(),
+                        email,
+                        hash_password(payload.password),
+                        now.isoformat(),
+                        now.isoformat(),
+                    ),
+                )
+                connection.commit()
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("Este e-mail ja esta cadastrado.") from exc
+            return UserPublic(id=user_id, name=payload.name.strip(), email=email, created_at=now)
+
+    def verify_credentials(self, email: str, password: str) -> UserPublic | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM users WHERE email = ?",
+                (normalize_email(email),),
+            ).fetchone()
+            if row is None or not verify_password(password, row["password_hash"]):
+                return None
+            return self._user_from_row(row)
+
+    def create_session(self, user_id: str, days: int) -> str:
+        token = create_access_token()
+        now = datetime.now(UTC)
+        expires_at = session_expiration(days)
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO sessions (id, user_id, token_hash, created_at, expires_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    self._new_id(),
+                    user_id,
+                    hash_token(token),
+                    now.isoformat(),
+                    expires_at.isoformat(),
+                ),
+            )
+            connection.commit()
+        return token
+
+    def get_user_by_token(self, token: str) -> UserPublic | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT users.* FROM sessions
+                JOIN users ON users.id = sessions.user_id
+                WHERE sessions.token_hash = ? AND sessions.expires_at > ?
+                """,
+                (hash_token(token), datetime.now(UTC).isoformat()),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._user_from_row(row)
+
+    def revoke_session(self, token: str) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute("DELETE FROM sessions WHERE token_hash = ?", (hash_token(token),))
+            connection.commit()
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.database_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _migrate(self) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    token_hash TEXT NOT NULL UNIQUE,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                """
+            )
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_token_hash ON sessions(token_hash)"
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)"
+            )
+            connection.commit()
+
+    def _user_from_row(self, row: sqlite3.Row) -> UserPublic:
+        return UserPublic(
+            id=row["id"],
+            name=row["name"],
+            email=row["email"],
+            created_at=datetime.fromisoformat(row["created_at"]),
+        )
+
+    def _new_id(self) -> str:
+        from uuid import uuid4
+
+        return str(uuid4())
 
 
 def build_meeting_repository(settings: Settings) -> MeetingRepository:
@@ -227,3 +433,15 @@ def build_meeting_repository(settings: Settings) -> MeetingRepository:
             "Use DATABASE_BACKEND=sqlite por enquanto."
         )
     raise RuntimeError(f"DATABASE_BACKEND desconhecido: {settings.database_backend}.")
+
+
+def build_auth_repository(settings: Settings) -> AuthRepository:
+    backend = settings.database_backend.lower().strip()
+    if backend == "sqlite":
+        return SQLiteAuthRepository(settings.database_path)
+    if backend == "postgres":
+        raise RuntimeError(
+            "PostgreSQL esta arquitetado como backend futuro, mas ainda nao esta ativo neste MVP. "
+            "Use DATABASE_BACKEND=sqlite por enquanto."
+        )
+    raise RuntimeError("Autenticacao local exige DATABASE_BACKEND=sqlite neste MVP.")

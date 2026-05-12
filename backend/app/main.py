@@ -2,9 +2,11 @@ from uuid import uuid4
 
 from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Settings, get_settings
 from app.domain import (
+    AuthToken,
     HealthResponse,
     Meeting,
     MeetingAnalysisUpdate,
@@ -13,18 +15,28 @@ from app.domain import (
     MeetingStatus,
     ProcessMeetingRequest,
     UploadedFileInfo,
+    UserLogin,
+    UserPublic,
+    UserRegister,
 )
 from app.jobs import ProcessingQueue, processing_queue
 from app.media import MediaService, MediaValidationError
 from app.minutes import build_minutes_provider
 from app.pdf_export import generate_meeting_pdf, pdf_filename
 from app.processing import MeetingProcessor
-from app.repository import MeetingRepository, build_meeting_repository
+from app.repository import AuthRepository, MeetingRepository, build_auth_repository, build_meeting_repository
 from app.transcription import build_transcription_provider
+
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_repository(settings: Settings = Depends(get_settings)) -> MeetingRepository:
     return build_meeting_repository(settings)
+
+
+def get_auth_repository(settings: Settings = Depends(get_settings)) -> AuthRepository:
+    return build_auth_repository(settings)
 
 
 def get_media_service(settings: Settings = Depends(get_settings)) -> MediaService:
@@ -42,6 +54,24 @@ def get_processor(
 
 def get_processing_queue() -> ProcessingQueue:
     return processing_queue
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    auth_repository: AuthRepository = Depends(get_auth_repository),
+) -> UserPublic:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Faca login para acessar esta area.",
+        )
+    user = auth_repository.get_user_by_token(credentials.credentials)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sessao invalida ou expirada.",
+        )
+    return user
 
 
 app = FastAPI(title="Gerador de Ata de Reuniao por IA", version="0.1.0")
@@ -102,30 +132,80 @@ def database_configured(settings: Settings) -> bool:
     return backend in {"sqlite", "json"}
 
 
+@app.post("/api/auth/register", response_model=AuthToken, status_code=status.HTTP_201_CREATED)
+def register_user(
+    payload: UserRegister,
+    settings: Settings = Depends(get_settings),
+    auth_repository: AuthRepository = Depends(get_auth_repository),
+) -> AuthToken:
+    try:
+        user = auth_repository.create_user(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    token = auth_repository.create_session(user.id, settings.auth_session_days)
+    return AuthToken(access_token=token, user=user)
+
+
+@app.post("/api/auth/login", response_model=AuthToken)
+def login_user(
+    payload: UserLogin,
+    settings: Settings = Depends(get_settings),
+    auth_repository: AuthRepository = Depends(get_auth_repository),
+) -> AuthToken:
+    user = auth_repository.verify_credentials(payload.email, payload.password)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="E-mail ou senha invalidos.",
+        )
+    token = auth_repository.create_session(user.id, settings.auth_session_days)
+    return AuthToken(access_token=token, user=user)
+
+
+@app.get("/api/auth/me", response_model=UserPublic)
+def get_me(current_user: UserPublic = Depends(get_current_user)) -> UserPublic:
+    return current_user
+
+
+@app.post("/api/auth/logout")
+def logout_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    auth_repository: AuthRepository = Depends(get_auth_repository),
+) -> dict[str, str]:
+    if credentials is not None:
+        auth_repository.revoke_session(credentials.credentials)
+    return {"status": "ok"}
+
+
 @app.get("/api/meetings", response_model=MeetingListResponse)
-def list_meetings(repository: MeetingRepository = Depends(get_repository)) -> MeetingListResponse:
-    return MeetingListResponse(items=repository.list())
+def list_meetings(
+    repository: MeetingRepository = Depends(get_repository),
+    current_user: UserPublic = Depends(get_current_user),
+) -> MeetingListResponse:
+    return MeetingListResponse(items=repository.list(owner_id=current_user.id))
 
 
 @app.post("/api/meetings", response_model=Meeting, status_code=status.HTTP_201_CREATED)
 def create_meeting(
     payload: MeetingCreate,
     repository: MeetingRepository = Depends(get_repository),
+    current_user: UserPublic = Depends(get_current_user),
 ) -> Meeting:
     if not payload.consent_confirmed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Confirme que os participantes foram cientificados antes de processar a reuniao.",
         )
-    return repository.create(payload)
+    return repository.create(payload, owner_id=current_user.id)
 
 
 @app.get("/api/meetings/{meeting_id}", response_model=Meeting)
 def get_meeting(
     meeting_id: str,
     repository: MeetingRepository = Depends(get_repository),
+    current_user: UserPublic = Depends(get_current_user),
 ) -> Meeting:
-    meeting = repository.get(meeting_id)
+    meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
     return meeting
@@ -138,8 +218,9 @@ async def upload_meeting_file(
     settings: Settings = Depends(get_settings),
     repository: MeetingRepository = Depends(get_repository),
     media_service: MediaService = Depends(get_media_service),
+    current_user: UserPublic = Depends(get_current_user),
 ) -> Meeting:
-    meeting = repository.get(meeting_id)
+    meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
 
@@ -171,7 +252,7 @@ async def upload_meeting_file(
         size_bytes=len(content),
         validation_warnings=validation_warnings,
     )
-    return repository.attach_file(meeting_id, file_info)
+    return repository.attach_file(meeting_id, file_info, owner_id=current_user.id)
 
 
 @app.post("/api/meetings/{meeting_id}/process", response_model=Meeting)
@@ -181,8 +262,9 @@ def process_meeting(
     repository: MeetingRepository = Depends(get_repository),
     processor: MeetingProcessor = Depends(get_processor),
     queue: ProcessingQueue = Depends(get_processing_queue),
+    current_user: UserPublic = Depends(get_current_user),
 ) -> Meeting:
-    meeting = repository.get(meeting_id)
+    meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
     if meeting.file is None:
@@ -236,8 +318,9 @@ def update_meeting_analysis(
     meeting_id: str,
     payload: MeetingAnalysisUpdate,
     repository: MeetingRepository = Depends(get_repository),
+    current_user: UserPublic = Depends(get_current_user),
 ) -> Meeting:
-    meeting = repository.get(meeting_id)
+    meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
     if meeting.analysis is None:
@@ -260,8 +343,9 @@ def update_meeting_analysis(
 def export_meeting_analysis_pdf(
     meeting_id: str,
     repository: MeetingRepository = Depends(get_repository),
+    current_user: UserPublic = Depends(get_current_user),
 ) -> Response:
-    meeting = repository.get(meeting_id)
+    meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
     if meeting.analysis is None:

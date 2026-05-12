@@ -5,13 +5,27 @@ import { useEffect, useMemo, useState } from "react";
 import {
   createMeeting,
   exportMeetingPdf,
+  loginUser,
   listMeetings,
+  logoutUser,
   processMeeting,
+  registerUser,
+  setAuthToken,
   updateMeetingAnalysis,
   uploadMeetingFile,
 } from "./api";
 import { useWorkspaceStore } from "./store";
-import type { AnalysisMode, Meeting, MeetingAnalysis, MeetingAnalysisUpdate, Priority, TaskItem } from "./types";
+import type {
+  AnalysisMode,
+  AuthPayload,
+  Meeting,
+  MeetingAnalysis,
+  MeetingAnalysisUpdate,
+  Priority,
+  RegisterPayload,
+  TaskItem,
+  User,
+} from "./types";
 
 const priorityLabel: Record<Priority, string> = {
   critical: "Critica",
@@ -45,7 +59,11 @@ const taskStatusLabel: Record<TaskItem["status"], string> = {
 export default function App() {
   const queryClient = useQueryClient();
   const selectedMeetingId = useWorkspaceStore((state) => state.selectedMeetingId);
+  const accessToken = useWorkspaceStore((state) => state.accessToken);
+  const user = useWorkspaceStore((state) => state.user);
   const selectMeeting = useWorkspaceStore((state) => state.selectMeeting);
+  const setSession = useWorkspaceStore((state) => state.setSession);
+  const clearSession = useWorkspaceStore((state) => state.clearSession);
   const [form, setForm] = useState({
     title: "",
     clientName: "",
@@ -57,9 +75,14 @@ export default function App() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("audio_only");
   const [error, setError] = useState<string | null>(null);
 
+  useEffect(() => {
+    setAuthToken(accessToken);
+  }, [accessToken]);
+
   const meetingsQuery = useQuery({
-    queryKey: ["meetings"],
+    queryKey: ["meetings", accessToken],
     queryFn: listMeetings,
+    enabled: Boolean(accessToken),
   });
 
   const meetings = meetingsQuery.data ?? [];
@@ -88,6 +111,14 @@ export default function App() {
       await queryClient.invalidateQueries({ queryKey: ["meetings"] });
     },
     onError: (mutationError) => setError(mutationError.message),
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: logoutUser,
+    onSettled: () => {
+      clearSession();
+      queryClient.clear();
+    },
   });
 
   const uploadMutation = useMutation({
@@ -138,6 +169,16 @@ export default function App() {
     processMutation.mutate({ meetingId: selectedMeeting.id, mode: analysisMode });
   }
 
+  function handleAuthSuccess(accessToken: string, authenticatedUser: NonNullable<typeof user>) {
+    setSession(accessToken, authenticatedUser);
+    setError(null);
+    void queryClient.invalidateQueries({ queryKey: ["meetings"] });
+  }
+
+  if (!accessToken || !user) {
+    return <AuthScreen onSuccess={handleAuthSuccess} />;
+  }
+
   return (
     <main className="min-h-screen bg-cloud text-ink">
       <header className="border-b border-slate-200 bg-white">
@@ -147,8 +188,15 @@ export default function App() {
             <h1 className="text-2xl font-semibold">Ata de reuniao por IA</h1>
           </div>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600">
-            React + FastAPI
+            {user.name}
           </span>
+          <button
+            className="button-secondary"
+            disabled={logoutMutation.isPending}
+            onClick={() => logoutMutation.mutate()}
+          >
+            Sair
+          </button>
         </div>
       </header>
 
@@ -324,6 +372,111 @@ export default function App() {
           {selectedMeeting?.analysis ? <AnalysisView meeting={selectedMeeting} /> : null}
         </section>
       </div>
+    </main>
+  );
+}
+
+function AuthScreen({
+  onSuccess,
+}: {
+  onSuccess: (accessToken: string, user: User) => void;
+}) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [form, setForm] = useState<RegisterPayload>({
+    name: "",
+    email: "",
+    password: "",
+  });
+  const [error, setError] = useState<string | null>(null);
+
+  const loginMutation = useMutation({
+    mutationFn: (payload: AuthPayload) => loginUser(payload),
+    onSuccess: (session) => onSuccess(session.access_token, session.user),
+    onError: (mutationError) => setError(mutationError.message),
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: (payload: RegisterPayload) => registerUser(payload),
+    onSuccess: (session) => onSuccess(session.access_token, session.user),
+    onError: (mutationError) => setError(mutationError.message),
+  });
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    if (mode === "register") {
+      registerMutation.mutate(form);
+      return;
+    }
+    loginMutation.mutate({ email: form.email, password: form.password });
+  }
+
+  const isPending = loginMutation.isPending || registerMutation.isPending;
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-cloud px-5 text-ink">
+      <section className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-panel">
+        <p className="text-xs font-semibold uppercase tracking-wide text-lagoon">AtaAI</p>
+        <h1 className="mt-1 text-2xl font-semibold">
+          {mode === "login" ? "Entrar na conta" : "Criar conta"}
+        </h1>
+
+        <form className="mt-5 space-y-4" onSubmit={submit}>
+          {mode === "register" ? (
+            <Field label="Nome">
+              <input
+                className="input"
+                minLength={2}
+                required
+                value={form.name}
+                onChange={(event) => setForm({ ...form, name: event.target.value })}
+              />
+            </Field>
+          ) : null}
+
+          <Field label="E-mail">
+            <input
+              className="input"
+              minLength={5}
+              required
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm({ ...form, email: event.target.value })}
+            />
+          </Field>
+
+          <Field label="Senha">
+            <input
+              className="input"
+              minLength={8}
+              required
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
+            />
+          </Field>
+
+          {error ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              {error}
+            </div>
+          ) : null}
+
+          <button className="button-primary w-full" disabled={isPending}>
+            {isPending ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
+          </button>
+        </form>
+
+        <button
+          className="mt-4 w-full text-sm font-medium text-lagoon"
+          onClick={() => {
+            setError(null);
+            setMode(mode === "login" ? "register" : "login");
+          }}
+        >
+          {mode === "login" ? "Criar uma nova conta" : "Entrar com uma conta existente"}
+        </button>
+      </section>
     </main>
   );
 }

@@ -64,6 +64,16 @@ def make_client(tmp_path, **settings_overrides):
     return TestClient(app)
 
 
+def auth_headers(client, email="caio@example.com"):
+    response = client.post(
+        "/api/auth/register",
+        json={"name": "Caio Torres", "email": email, "password": "senha-segura-123"},
+    )
+    assert response.status_code == 201
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
+
+
 def use_immediate_processing_queue():
     queue = ImmediateProcessingQueue()
     app.dependency_overrides[get_processing_queue] = lambda: queue
@@ -148,10 +158,63 @@ def test_postgres_backend_is_reserved_until_driver_is_added(tmp_path):
         raise AssertionError("PostgreSQL backend should be explicit about not being active yet.")
 
 
+def test_registers_and_authenticates_user(tmp_path):
+    client = make_client(tmp_path)
+
+    register = client.post(
+        "/api/auth/register",
+        json={"name": "Caio Torres", "email": "caio@example.com", "password": "senha-segura-123"},
+    )
+
+    assert register.status_code == 201
+    payload = register.json()
+    assert payload["token_type"] == "bearer"
+    assert payload["access_token"]
+    assert payload["user"]["email"] == "caio@example.com"
+
+    me = client.get("/api/auth/me", headers={"Authorization": f"Bearer {payload['access_token']}"})
+    assert me.status_code == 200
+    assert me.json()["email"] == "caio@example.com"
+
+
+def test_rejects_meetings_without_login(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.get("/api/meetings")
+
+    assert response.status_code == 401
+    assert "login" in response.json()["detail"]
+
+
+def test_meetings_are_isolated_by_user(tmp_path):
+    client = make_client(tmp_path)
+    caio_headers = auth_headers(client, "caio@example.com")
+    maria_headers = auth_headers(client, "maria@example.com")
+
+    created = client.post(
+        "/api/meetings",
+        headers=caio_headers,
+        json={
+            "title": "Reuniao privada",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    )
+
+    assert created.status_code == 201
+    assert created.json()["owner_id"]
+    assert client.get("/api/meetings", headers=maria_headers).json()["items"] == []
+    assert client.get(f"/api/meetings/{created.json()['id']}", headers=maria_headers).status_code == 404
+
+
 def test_rejects_unsupported_upload(tmp_path):
     client = make_client(tmp_path)
+    headers = auth_headers(client)
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -163,6 +226,7 @@ def test_rejects_unsupported_upload(tmp_path):
 
     response = client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("documento.txt", b"conteudo", "text/plain")},
     )
 
@@ -172,9 +236,11 @@ def test_rejects_unsupported_upload(tmp_path):
 
 def test_processing_fails_clearly_without_media_tools(tmp_path):
     client = make_client(tmp_path)
+    headers = auth_headers(client)
     use_immediate_processing_queue()
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -185,17 +251,19 @@ def test_processing_fails_clearly_without_media_tools(tmp_path):
     ).json()
     upload_response = client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
     assert upload_response.status_code == 200
 
     response = client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
     assert response.status_code == 200
-    payload = client.get(f"/api/meetings/{meeting['id']}").json()
+    payload = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
     assert payload["status"] == "failed"
     assert "FFprobe" in payload["processing_error"]
 
@@ -204,12 +272,14 @@ def test_processing_completes_with_mock_transcription_and_minutes(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    headers = auth_headers(client)
     use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -220,18 +290,20 @@ def test_processing_completes_with_mock_transcription_and_minutes(tmp_path):
     ).json()
     upload_response = client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
     assert upload_response.status_code == 200
 
     response = client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
     assert response.status_code == 200
     assert response.json()["status"] == "queued"
-    payload = client.get(f"/api/meetings/{meeting['id']}").json()
+    payload = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
     assert payload["status"] == "completed"
     assert payload["analysis"]["transcript_provider"] == "mock"
     assert payload["analysis"]["minutes_provider"] == "mock"
@@ -244,12 +316,14 @@ def test_processing_returns_queued_before_background_job_runs(tmp_path):
 
     queue = HoldingProcessingQueue()
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    headers = auth_headers(client)
     app.dependency_overrides[get_processing_queue] = lambda: queue
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -260,11 +334,13 @@ def test_processing_returns_queued_before_background_job_runs(tmp_path):
     ).json()
     client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
 
     response = client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
@@ -274,7 +350,7 @@ def test_processing_returns_queued_before_background_job_runs(tmp_path):
     assert len(queue.jobs) == 1
 
     queue.run_next()
-    processed = client.get(f"/api/meetings/{meeting['id']}").json()
+    processed = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
     assert processed["status"] == "completed"
     assert processed["analysis"]["minutes_provider"] == "mock"
 
@@ -284,12 +360,14 @@ def test_rejects_duplicate_processing_while_queued(tmp_path):
 
     queue = HoldingProcessingQueue()
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    headers = auth_headers(client)
     app.dependency_overrides[get_processing_queue] = lambda: queue
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -300,15 +378,18 @@ def test_rejects_duplicate_processing_while_queued(tmp_path):
     ).json()
     client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
     client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
     response = client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
@@ -320,12 +401,14 @@ def test_updates_generated_analysis_for_human_review(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    headers = auth_headers(client)
     use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -336,14 +419,16 @@ def test_updates_generated_analysis_for_human_review(tmp_path):
     ).json()
     client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
     processed = client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
     assert processed.status_code == 200
-    processed = client.get(f"/api/meetings/{meeting['id']}").json()
+    processed = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
 
     analysis = processed["analysis"]
     first_task = analysis["tasks"][0]
@@ -360,7 +445,7 @@ def test_updates_generated_analysis_for_human_review(tmp_path):
         "minutes_markdown": "# Ata revisada\n\nConteudo revisado.",
     }
 
-    response = client.patch(f"/api/meetings/{meeting['id']}/analysis", json=payload)
+    response = client.patch(f"/api/meetings/{meeting['id']}/analysis", headers=headers, json=payload)
 
     assert response.status_code == 200
     updated = response.json()
@@ -374,8 +459,10 @@ def test_updates_generated_analysis_for_human_review(tmp_path):
 
 def test_cannot_update_analysis_before_generation(tmp_path):
     client = make_client(tmp_path)
+    headers = auth_headers(client)
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao sem ata",
             "client_name": "Cliente",
@@ -387,6 +474,7 @@ def test_cannot_update_analysis_before_generation(tmp_path):
 
     response = client.patch(
         f"/api/meetings/{meeting['id']}/analysis",
+        headers=headers,
         json={
             "executive_summary": "Resumo",
             "topics": [],
@@ -406,12 +494,14 @@ def test_exports_generated_analysis_as_pdf(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    headers = auth_headers(client)
     use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao PDF",
             "client_name": "Cliente",
@@ -422,14 +512,16 @@ def test_exports_generated_analysis_as_pdf(tmp_path):
     ).json()
     client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
     client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
-    response = client.get(f"/api/meetings/{meeting['id']}/analysis.pdf")
+    response = client.get(f"/api/meetings/{meeting['id']}/analysis.pdf", headers=headers)
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
@@ -440,8 +532,10 @@ def test_exports_generated_analysis_as_pdf(tmp_path):
 
 def test_cannot_export_pdf_before_analysis_exists(tmp_path):
     client = make_client(tmp_path)
+    headers = auth_headers(client)
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao sem PDF",
             "client_name": "Cliente",
@@ -451,7 +545,7 @@ def test_cannot_export_pdf_before_analysis_exists(tmp_path):
         },
     ).json()
 
-    response = client.get(f"/api/meetings/{meeting['id']}/analysis.pdf")
+    response = client.get(f"/api/meetings/{meeting['id']}/analysis.pdf", headers=headers)
 
     assert response.status_code == 400
     assert "Gere uma ata" in response.json()["detail"]
@@ -461,12 +555,14 @@ def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="gemini", gemini_api_key=None)
+    headers = auth_headers(client)
     use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -477,17 +573,19 @@ def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     ).json()
     upload_response = client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
     assert upload_response.status_code == 200
 
     response = client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
     assert response.status_code == 200
-    payload = client.get(f"/api/meetings/{meeting['id']}").json()
+    payload = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
     assert payload["status"] == "failed"
     assert "GEMINI_API_KEY" in payload["processing_error"]
 
@@ -496,12 +594,14 @@ def test_minutes_generation_fails_without_gemini_key_after_mock_transcription(tm
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="gemini")
+    headers = auth_headers(client)
     use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
     meeting = client.post(
         "/api/meetings",
+        headers=headers,
         json={
             "title": "Reuniao teste",
             "client_name": "Cliente",
@@ -512,17 +612,19 @@ def test_minutes_generation_fails_without_gemini_key_after_mock_transcription(tm
     ).json()
     upload_response = client.post(
         f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
         files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
     )
     assert upload_response.status_code == 200
 
     response = client.post(
         f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
     )
 
     assert response.status_code == 200
-    payload = client.get(f"/api/meetings/{meeting['id']}").json()
+    payload = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
     assert payload["status"] == "failed"
     assert "GEMINI_API_KEY" in payload["processing_error"]
 
