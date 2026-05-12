@@ -7,7 +7,7 @@ MVP para capturar reunioes com clientes, processar audio/video, gerar transcrica
 ## Stack inicial
 
 - Frontend: React, TypeScript, Vite, Tailwind CSS, TanStack Query e Zustand.
-- Desktop: scaffold Tauri usando o mesmo frontend React; build do instalador depende de Rust/Cargo.
+- Desktop: Tauri usando o mesmo frontend React, com instalador Windows NSIS gerado.
 - Mobile atual: PWA instalavel; empacotamento futuro com Capacitor.
 - Backend: Python, FastAPI e Pydantic.
 - Processamento: fila local no MVP; Redis/Celery distribuido no futuro.
@@ -73,7 +73,7 @@ Esta primeira base ja inclui:
 - cadastro, login e isolamento das reunioes por usuario;
 - presets personalizados de ata por usuario;
 - manifesto PWA, service worker e tela offline basica para uso no celular;
-- scaffold Tauri para gerar aplicativo desktop;
+- instalador desktop Windows gerado com Tauri;
 - tela inicial do MVP em React.
 
 Redis/Celery distribuido, PostgreSQL ativo, organizacoes/permissoes avancadas e storage externo serao adicionados nas proximas etapas.

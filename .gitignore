@@ -31,5 +31,7 @@ backend/storage/
 
 # Tauri / Capacitor future outputs
 src-tauri/target/
+frontend/src-tauri/target/
+frontend/src-tauri/gen/
 android/app/build/
 ios/App/build/

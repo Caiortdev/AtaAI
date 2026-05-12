@@ -6,20 +6,7 @@ Esta fase prepara o AtaAI para rodar como aplicativo desktop usando Tauri.
 
 ## Status
 
-Implementada com bloqueio externo para gerar o instalador.
-
-## Por que nao esta marcada como concluida
-
-A estrutura Tauri foi criada, os scripts foram adicionados e o frontend continua compilando.
-
-Porem, o instalador final ainda nao foi gerado nesta maquina porque o ambiente nao possui:
-
-```text
-rustc
-cargo
-```
-
-Esses comandos sao obrigatorios para compilar um aplicativo Tauri.
+Concluida.
 
 ## Para que esta fase existe
 
@@ -27,9 +14,9 @@ O desktop e importante porque muitas reunioes gravadas, arquivos grandes e fluxo
 
 Com Tauri, conseguimos reaproveitar o frontend React e criar um instalavel leve para Windows.
 
-## O que o usuario conseguira fazer
+## O que o usuario consegue fazer
 
-Quando o build Tauri for executado em uma maquina com Rust instalado, o usuario podera:
+Com o instalador gerado, o usuario pode:
 
 - abrir o AtaAI como aplicativo desktop;
 - usar a mesma interface React do navegador;
@@ -85,7 +72,23 @@ Com:
 - `src/lib.rs`;
 - `tauri.conf.json`;
 - `capabilities/default.json`;
-- icone SVG base.
+- icone SVG base;
+- icone ICO obrigatorio para Windows;
+- `Cargo.lock` para travar as dependencias Rust do aplicativo.
+
+### Instalador Windows
+
+Foi gerado o instalador:
+
+```text
+frontend/src-tauri/target/release/bundle/nsis/AtaAI_0.1.0_x64-setup.exe
+```
+
+Tambem foi gerado o executavel:
+
+```text
+frontend/src-tauri/target/release/ataai.exe
+```
 
 ### Seguranca inicial
 
@@ -106,11 +109,9 @@ Isso permite que o app desktop converse com a API local.
 4. O frontend continua chamando a API FastAPI.
 5. O backend segue separado nesta etapa.
 
-## Como testar quando Rust estiver instalado
+## Como testar
 
-1. Instale Rust e Cargo.
-2. Abra o terminal em `frontend`.
-3. Rode:
+Abra o terminal em `frontend` e rode:
 
 ```powershell
 npm.cmd install
@@ -125,36 +126,47 @@ npm.cmd run desktop:build
 
 ## Validacoes executadas nesta fase
 
-Foram executadas as validacoes possiveis sem Rust:
+Foram executadas as validacoes:
 
 ```text
 npm.cmd run lint
 npm.cmd run build
+npm.cmd run desktop:build
+rustc --version
+cargo --version
 ```
 
-Tambem foi verificado que `rustc` e `cargo` nao estavam disponiveis no ambiente.
+Resultado:
+
+```text
+Frontend TypeScript sem erros
+Build web concluido
+Build Tauri release concluido
+Instalador NSIS gerado
+rustc 1.95.0
+cargo 1.95.0
+```
 
 ## O que ficou fora
 
 Esta fase nao inclui:
 
-- geracao real do `.exe`;
 - assinatura do instalador;
 - autoupdate;
 - backend Python empacotado junto ao desktop;
 - instalador macOS/Linux;
 - icones finais em todos os formatos nativos.
 
-## Proximo passo para concluir 100%
+## Proximo passo de melhoria
 
-Instalar Rust/Cargo e executar:
+Testar o instalador em uma maquina Windows limpa:
 
-```powershell
-cd frontend
-npm.cmd run desktop:build
-```
-
-Depois disso, testar o instalador gerado em uma maquina Windows limpa.
+- instalar o app;
+- iniciar o backend;
+- abrir o AtaAI desktop;
+- fazer login;
+- criar uma reuniao;
+- gerar e exportar uma ata.
 
 ## Glossario rapido
 

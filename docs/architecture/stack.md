@@ -14,7 +14,7 @@ Para dados vindos da API, usaremos TanStack Query. Para estado local simples, us
 
 Usamos Tauri para preparar instalaveis desktop leves. A decisao favorece Windows primeiro, reaproveitando o mesmo frontend React.
 
-O scaffold Tauri ja existe em `frontend/src-tauri`. O instalador final ainda depende de Rust/Cargo instalados na maquina de build.
+O projeto Tauri existe em `frontend/src-tauri` e o instalador Windows NSIS ja foi gerado. Rust/Cargo continuam sendo requisitos da maquina de build.
 
 ## Mobile
 

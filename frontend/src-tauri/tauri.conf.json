@@ -28,7 +28,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "icon": ["icons/icon.svg"],
+    "icon": ["icons/icon.ico", "icons/icon.svg"],
     "publisher": "AtaAI",
     "copyright": "Copyright AtaAI",
     "category": "Business",

@@ -47,7 +47,7 @@ Para entender o projeto do zero:
 | Fase 8 | [phase-8-auth-access-control.md](./phases/phase-8-auth-access-control.md) | Concluida | Cadastro, login e isolamento de reunioes por usuario. |
 | Fase 9 | [phase-9-custom-presets.md](./phases/phase-9-custom-presets.md) | Concluida | Presets personalizados de ata por usuario. |
 | Fase 10 | [phase-10-pwa-mobile.md](./phases/phase-10-pwa-mobile.md) | Concluida | Manifesto PWA, service worker e suporte basico offline. |
-| Fase 11 | [phase-11-tauri-desktop.md](./phases/phase-11-tauri-desktop.md) | Implementada | Scaffold Tauri desktop pronto; build do instalador depende de Rust/Cargo. |
+| Fase 11 | [phase-11-tauri-desktop.md](./phases/phase-11-tauri-desktop.md) | Concluida | Instalador desktop Windows gerado com Tauri. |
 
 ## Proximas fases previstas
 
@@ -83,6 +83,6 @@ Estrutura recomendada:
 
 ## Estado atual do MVP
 
-O MVP ja consegue cadastrar usuarios, autenticar com sessao local, receber arquivo de reuniao, preparar audio real, enfileirar o processamento, persistir dados em SQLite, isolar reunioes por usuario, criar presets personalizados, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana, exportar a ata revisada em PDF, instalar a interface como PWA em celulares compativeis e possui scaffold Tauri para desktop.
+O MVP ja consegue cadastrar usuarios, autenticar com sessao local, receber arquivo de reuniao, preparar audio real, enfileirar o processamento, persistir dados em SQLite, isolar reunioes por usuario, criar presets personalizados, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana, exportar a ata revisada em PDF, instalar a interface como PWA em celulares compativeis e gerar instalador desktop Windows com Tauri.
 
 As Fases 2 e 3 foram validadas em fluxo real no dia 2026-05-11, com audio de teste, transcricao Gemini e geracao de ata/tarefas Gemini.

@@ -4,13 +4,19 @@ Este guia explica como rodar e gerar o instalavel desktop do AtaAI com Tauri.
 
 ## Estado atual
 
-O projeto ja possui scaffold Tauri em:
+O projeto ja possui configuracao Tauri em:
 
 ```text
 frontend/src-tauri/
 ```
 
 O frontend continua sendo React/Vite. O Tauri empacota esse mesmo frontend dentro de uma janela desktop.
+
+O instalador Windows ja foi gerado em:
+
+```text
+frontend/src-tauri/target/release/bundle/nsis/AtaAI_0.1.0_x64-setup.exe
+```
 
 ## Requisitos
 
@@ -102,10 +108,11 @@ npm.cmd run desktop:build
 
 ## Icones
 
-O projeto possui um icone SVG base em:
+O projeto possui icones base em:
 
 ```text
 frontend/src-tauri/icons/icon.svg
+frontend/src-tauri/icons/icon.ico
 ```
 
 Antes de publicar um instalador final, gere o conjunto completo de icones do Tauri:
@@ -117,23 +124,14 @@ npx @tauri-apps/cli@2.8.4 icon public/icon.svg
 
 Isso cria arquivos PNG/ICO/ICNS usados pelos empacotadores.
 
-## Limitacoes desta fase
+## Limitacoes atuais
 
-Ainda nao foi gerado o `.exe` nesta maquina porque Rust/Cargo nao estavam disponiveis no ambiente local durante a implementacao.
+O instalador desktop empacota a interface, mas nao empacota o backend Python.
 
-O que esta pronto:
+O que ainda precisa evoluir:
 
-- estrutura `src-tauri`;
-- configuracao `tauri.conf.json`;
-- scripts npm;
-- janela desktop;
-- CSP inicial para acessar a API local;
-- documentacao de build.
-
-O que falta para o instalador real:
-
-- instalar Rust/Cargo;
-- baixar o CLI do Tauri via `npx`;
-- gerar icones finais;
-- executar `npm.cmd run desktop:build`;
-- testar o instalador em uma maquina limpa.
+- testar o instalador em uma maquina Windows limpa;
+- assinar o instalador;
+- definir autoupdate;
+- decidir se o backend sera empacotado junto ou hospedado em servidor;
+- gerar icones finais em todos os formatos recomendados pelo Tauri.
