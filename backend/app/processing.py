@@ -27,7 +27,11 @@ class MeetingProcessor:
         meeting.analysis_mode = request.mode
         meeting.preset = request.preset
         meeting.processing_error = None
-        meeting.processing_steps = ["Arquivo recebido", "Validando midia com FFprobe"]
+        if "Processamento enfileirado" in meeting.processing_steps:
+            meeting.processing_steps.append("Processamento iniciado")
+            meeting.processing_steps.append("Validando midia com FFprobe")
+        else:
+            meeting.processing_steps = ["Arquivo recebido", "Validando midia com FFprobe"]
 
         try:
             if meeting.file is None:

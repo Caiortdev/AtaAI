@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class MeetingStatus(StrEnum):
     draft = "draft"
     uploaded = "uploaded"
+    queued = "queued"
     processing = "processing"
     completed = "completed"
     failed = "failed"

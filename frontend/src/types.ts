@@ -1,4 +1,4 @@
-export type MeetingStatus = "draft" | "uploaded" | "processing" | "completed" | "failed";
+export type MeetingStatus = "draft" | "uploaded" | "queued" | "processing" | "completed" | "failed";
 export type AnalysisMode = "audio_only" | "audio_video";
 export type Priority = "critical" | "high" | "medium" | "low";
 export type MediaKind = "audio" | "video";

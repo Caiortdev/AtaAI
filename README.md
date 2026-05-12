@@ -66,9 +66,10 @@ Esta primeira base ja inclui:
 - geracao mock de ata/tarefas para testes automatizados;
 - revisao humana da ata e das tarefas;
 - exportacao da ata revisada em PDF;
+- processamento em fila local para nao travar a requisicao enquanto a IA trabalha;
 - tela inicial do MVP em React.
 
-Redis/Celery, PostgreSQL e storage externo serao adicionados nas proximas etapas.
+Redis/Celery distribuido, PostgreSQL e storage externo serao adicionados nas proximas etapas.
 
 ## Geracao de ata e tarefas
 

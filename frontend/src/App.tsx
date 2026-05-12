@@ -30,6 +30,7 @@ const priorityClass: Record<Priority, string> = {
 const statusLabel: Record<string, string> = {
   draft: "Rascunho",
   uploaded: "Arquivo enviado",
+  queued: "Na fila",
   processing: "Processando",
   completed: "Concluida",
   failed: "Falhou",
@@ -66,6 +67,18 @@ export default function App() {
     () => meetings.find((meeting) => meeting.id === selectedMeetingId) ?? meetings[0],
     [meetings, selectedMeetingId],
   );
+  const hasRunningMeeting = meetings.some(
+    (meeting) => meeting.status === "queued" || meeting.status === "processing",
+  );
+
+  useEffect(() => {
+    if (!hasRunningMeeting) return undefined;
+
+    const interval = window.setInterval(() => {
+      void queryClient.invalidateQueries({ queryKey: ["meetings"] });
+    }, 2000);
+    return () => window.clearInterval(interval);
+  }, [hasRunningMeeting, queryClient]);
 
   const createMutation = useMutation({
     mutationFn: createMeeting,
@@ -273,6 +286,11 @@ export default function App() {
                       onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
                     />
                     <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedMeeting.status === "queued" || selectedMeeting.status === "processing" ? (
+                        <span className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-800">
+                          Acompanhando processamento...
+                        </span>
+                      ) : null}
                       <button
                         className="button-secondary"
                         disabled={!selectedFile || uploadMutation.isPending}
@@ -282,10 +300,15 @@ export default function App() {
                       </button>
                       <button
                         className="button-primary"
-                        disabled={!selectedMeeting.file || processMutation.isPending}
+                        disabled={
+                          !selectedMeeting.file ||
+                          processMutation.isPending ||
+                          selectedMeeting.status === "queued" ||
+                          selectedMeeting.status === "processing"
+                        }
                         onClick={handleProcess}
                       >
-                        {processMutation.isPending ? "Processando..." : "Gerar ata"}
+                        {processMutation.isPending ? "Enfileirando..." : "Gerar ata"}
                       </button>
                     </div>
                   </div>

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.config import Settings, get_settings
-from app.main import app
+from app.main import app, get_processing_queue
 from app.domain import PreparedAudioInfo
 from app.media import MediaService
 
@@ -27,6 +27,24 @@ class FakeMediaService(MediaService):
         return [self.prepared_audio_path(meeting_id, prepared_audio)]
 
 
+class ImmediateProcessingQueue:
+    def enqueue(self, meeting_id, run):
+        run()
+
+
+class HoldingProcessingQueue:
+    def __init__(self):
+        self.jobs = []
+
+    def enqueue(self, meeting_id, run):
+        self.jobs.append((meeting_id, run))
+
+    def run_next(self):
+        meeting_id, run = self.jobs.pop(0)
+        run()
+        return meeting_id
+
+
 def make_client(tmp_path, **settings_overrides):
     gemini_api_key = settings_overrides.pop("gemini_api_key", None)
     openai_api_key = settings_overrides.pop("openai_api_key", None)
@@ -41,6 +59,12 @@ def make_client(tmp_path, **settings_overrides):
     )
     app.dependency_overrides[get_settings] = lambda: settings
     return TestClient(app)
+
+
+def use_immediate_processing_queue():
+    queue = ImmediateProcessingQueue()
+    app.dependency_overrides[get_processing_queue] = lambda: queue
+    return queue
 
 
 def test_health(tmp_path):
@@ -78,6 +102,7 @@ def test_rejects_unsupported_upload(tmp_path):
 
 def test_processing_fails_clearly_without_media_tools(tmp_path):
     client = make_client(tmp_path)
+    use_immediate_processing_queue()
     meeting = client.post(
         "/api/meetings",
         json={
@@ -100,7 +125,7 @@ def test_processing_fails_clearly_without_media_tools(tmp_path):
     )
 
     assert response.status_code == 200
-    payload = response.json()
+    payload = client.get(f"/api/meetings/{meeting['id']}").json()
     assert payload["status"] == "failed"
     assert "FFprobe" in payload["processing_error"]
 
@@ -109,6 +134,7 @@ def test_processing_completes_with_mock_transcription_and_minutes(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -134,17 +160,97 @@ def test_processing_completes_with_mock_transcription_and_minutes(tmp_path):
     )
 
     assert response.status_code == 200
-    payload = response.json()
+    assert response.json()["status"] == "queued"
+    payload = client.get(f"/api/meetings/{meeting['id']}").json()
     assert payload["status"] == "completed"
     assert payload["analysis"]["transcript_provider"] == "mock"
     assert payload["analysis"]["minutes_provider"] == "mock"
     assert payload["analysis"]["transcript"]
+    assert "Processamento enfileirado" in payload["processing_steps"]
+
+
+def test_processing_returns_queued_before_background_job_runs(tmp_path):
+    from app.main import get_media_service
+
+    queue = HoldingProcessingQueue()
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    app.dependency_overrides[get_processing_queue] = lambda: queue
+    app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
+        get_settings()
+    )
+    meeting = client.post(
+        "/api/meetings",
+        json={
+            "title": "Reuniao teste",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+    client.post(
+        f"/api/meetings/{meeting['id']}/upload",
+        files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
+    )
+
+    response = client.post(
+        f"/api/meetings/{meeting['id']}/process",
+        json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "queued"
+    assert response.json()["processing_steps"] == ["Arquivo recebido", "Processamento enfileirado"]
+    assert len(queue.jobs) == 1
+
+    queue.run_next()
+    processed = client.get(f"/api/meetings/{meeting['id']}").json()
+    assert processed["status"] == "completed"
+    assert processed["analysis"]["minutes_provider"] == "mock"
+
+
+def test_rejects_duplicate_processing_while_queued(tmp_path):
+    from app.main import get_media_service
+
+    queue = HoldingProcessingQueue()
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    app.dependency_overrides[get_processing_queue] = lambda: queue
+    app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
+        get_settings()
+    )
+    meeting = client.post(
+        "/api/meetings",
+        json={
+            "title": "Reuniao teste",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+    client.post(
+        f"/api/meetings/{meeting['id']}/upload",
+        files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
+    )
+    client.post(
+        f"/api/meetings/{meeting['id']}/process",
+        json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
+    )
+
+    response = client.post(
+        f"/api/meetings/{meeting['id']}/process",
+        json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
+    )
+
+    assert response.status_code == 409
+    assert "ja esta na fila" in response.json()["detail"]
 
 
 def test_updates_generated_analysis_for_human_review(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -165,7 +271,9 @@ def test_updates_generated_analysis_for_human_review(tmp_path):
     processed = client.post(
         f"/api/meetings/{meeting['id']}/process",
         json={"mode": "audio_only", "preset": "ata_objetiva_com_tarefas"},
-    ).json()
+    )
+    assert processed.status_code == 200
+    processed = client.get(f"/api/meetings/{meeting['id']}").json()
 
     analysis = processed["analysis"]
     first_task = analysis["tasks"][0]
@@ -228,6 +336,7 @@ def test_exports_generated_analysis_as_pdf(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -282,6 +391,7 @@ def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="gemini", gemini_api_key=None)
+    use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -307,7 +417,7 @@ def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     )
 
     assert response.status_code == 200
-    payload = response.json()
+    payload = client.get(f"/api/meetings/{meeting['id']}").json()
     assert payload["status"] == "failed"
     assert "GEMINI_API_KEY" in payload["processing_error"]
 
@@ -316,6 +426,7 @@ def test_minutes_generation_fails_without_gemini_key_after_mock_transcription(tm
     from app.main import get_media_service
 
     client = make_client(tmp_path, transcription_provider="mock", minutes_provider="gemini")
+    use_immediate_processing_queue()
     app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
         get_settings()
     )
@@ -341,7 +452,7 @@ def test_minutes_generation_fails_without_gemini_key_after_mock_transcription(tm
     )
 
     assert response.status_code == 200
-    payload = response.json()
+    payload = client.get(f"/api/meetings/{meeting['id']}").json()
     assert payload["status"] == "failed"
     assert "GEMINI_API_KEY" in payload["processing_error"]
 

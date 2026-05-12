@@ -10,9 +10,11 @@ from app.domain import (
     MeetingAnalysisUpdate,
     MeetingCreate,
     MeetingListResponse,
+    MeetingStatus,
     ProcessMeetingRequest,
     UploadedFileInfo,
 )
+from app.jobs import ProcessingQueue, processing_queue
 from app.media import MediaService, MediaValidationError
 from app.minutes import build_minutes_provider
 from app.pdf_export import generate_meeting_pdf, pdf_filename
@@ -36,6 +38,10 @@ def get_processor(
     transcription_provider = build_transcription_provider(settings, media_service)
     minutes_provider = build_minutes_provider(settings)
     return MeetingProcessor(media_service, transcription_provider, minutes_provider)
+
+
+def get_processing_queue() -> ProcessingQueue:
+    return processing_queue
 
 
 app = FastAPI(title="Gerador de Ata de Reuniao por IA", version="0.1.0")
@@ -162,6 +168,7 @@ def process_meeting(
     payload: ProcessMeetingRequest,
     repository: MeetingRepository = Depends(get_repository),
     processor: MeetingProcessor = Depends(get_processor),
+    queue: ProcessingQueue = Depends(get_processing_queue),
 ) -> Meeting:
     meeting = repository.get(meeting_id)
     if meeting is None:
@@ -171,9 +178,45 @@ def process_meeting(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Envie um arquivo antes de processar a reuniao.",
         )
+    if meeting.status in {MeetingStatus.queued, MeetingStatus.processing}:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Esta reuniao ja esta na fila ou em processamento.",
+        )
 
-    processed = processor.process(meeting, payload)
-    return repository.save(processed)
+    meeting.status = MeetingStatus.queued
+    meeting.analysis_mode = payload.mode
+    meeting.preset = payload.preset
+    meeting.processing_error = None
+    meeting.processing_steps = ["Arquivo recebido", "Processamento enfileirado"]
+    queued = repository.save(meeting)
+    queue.enqueue(
+        meeting_id=meeting.id,
+        run=lambda: run_processing_job(meeting.id, payload, repository, processor),
+    )
+    return queued
+
+
+def run_processing_job(
+    meeting_id: str,
+    payload: ProcessMeetingRequest,
+    repository: MeetingRepository,
+    processor: MeetingProcessor,
+) -> None:
+    meeting = repository.get(meeting_id)
+    if meeting is None:
+        return
+
+    try:
+        processed = processor.process(meeting, payload)
+    except Exception as exc:
+        meeting.status = MeetingStatus.failed
+        meeting.processing_error = f"Erro inesperado no processamento: {exc}"
+        meeting.processing_steps.append("Processamento interrompido")
+        repository.save(meeting)
+        return
+
+    repository.save(processed)
 
 
 @app.patch("/api/meetings/{meeting_id}/analysis", response_model=Meeting)

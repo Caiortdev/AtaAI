@@ -24,7 +24,8 @@ Para entender o projeto do zero:
 5. [Fase 3 - Geracao de ata e tarefas com IA](./phases/phase-3-minutes-generation.md)
 6. [Fase 4 - Editor de ata e tarefas](./phases/phase-4-human-review-editor.md)
 7. [Fase 5 - Exportacao em PDF](./phases/phase-5-pdf-export.md)
-8. [Stack tecnica escolhida](./architecture/stack.md)
+8. [Fase 6 - Processamento assincrono](./phases/phase-6-async-processing.md)
+9. [Stack tecnica escolhida](./architecture/stack.md)
 
 ## Status das fases
 
@@ -36,12 +37,12 @@ Para entender o projeto do zero:
 | Fase 3 | [phase-3-minutes-generation.md](./phases/phase-3-minutes-generation.md) | Concluida | Geracao estruturada de ata, tarefas e prioridades por IA. |
 | Fase 4 | [phase-4-human-review-editor.md](./phases/phase-4-human-review-editor.md) | Concluida | Editor para revisao humana de ata, resumo, listas e tarefas. |
 | Fase 5 | [phase-5-pdf-export.md](./phases/phase-5-pdf-export.md) | Concluida | Exportacao da ata revisada em PDF. |
+| Fase 6 | [phase-6-async-processing.md](./phases/phase-6-async-processing.md) | Concluida | Fila local para processar reunioes em background. |
 
 ## Proximas fases previstas
 
 | Fase | Objetivo |
 | --- | --- |
-| Fase 6 | Processamento assincrono com filas. |
 | Fase 7 | Banco de dados PostgreSQL. |
 | Fase 8 | Login, privacidade e controle de acesso. |
 | Fase 9 | Presets personalizados de ata. |
@@ -77,6 +78,6 @@ Estrutura recomendada:
 
 ## Estado atual do MVP
 
-O MVP ja consegue receber arquivo de reuniao, preparar audio real, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana e exportar a ata revisada em PDF.
+O MVP ja consegue receber arquivo de reuniao, preparar audio real, enfileirar o processamento, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana e exportar a ata revisada em PDF.
 
 As Fases 2 e 3 foram validadas em fluxo real no dia 2026-05-11, com audio de teste, transcricao Gemini e geracao de ata/tarefas Gemini.
