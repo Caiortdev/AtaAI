@@ -209,6 +209,102 @@ def test_meetings_are_isolated_by_user(tmp_path):
     assert client.get(f"/api/meetings/{created.json()['id']}", headers=maria_headers).status_code == 404
 
 
+def test_lists_default_preset_for_authenticated_user(tmp_path):
+    client = make_client(tmp_path)
+    headers = auth_headers(client)
+
+    response = client.get("/api/presets", headers=headers)
+
+    assert response.status_code == 200
+    presets = response.json()["items"]
+    assert len(presets) == 1
+    assert presets[0]["is_default"] is True
+    assert presets[0]["name"] == "Ata objetiva com tarefas"
+
+
+def test_custom_presets_are_isolated_by_user(tmp_path):
+    client = make_client(tmp_path)
+    caio_headers = auth_headers(client, "caio@example.com")
+    maria_headers = auth_headers(client, "maria@example.com")
+
+    created = client.post(
+        "/api/presets",
+        headers=caio_headers,
+        json={
+            "name": "Ata comercial",
+            "description": "Modelo para reunioes de vendas.",
+            "instructions": "Foque em dores do cliente, oportunidades, proximos passos e objecoes.",
+        },
+    )
+
+    assert created.status_code == 201
+    assert len(client.get("/api/presets", headers=caio_headers).json()["items"]) == 2
+    maria_presets = client.get("/api/presets", headers=maria_headers).json()["items"]
+    assert len(maria_presets) == 1
+    assert maria_presets[0]["is_default"] is True
+    assert client.patch(
+        f"/api/presets/{created.json()['id']}",
+        headers=maria_headers,
+        json={
+            "name": "Tentativa externa",
+            "description": None,
+            "instructions": "Esta alteracao nao deve ser permitida por outro usuario.",
+        },
+    ).status_code == 404
+
+
+def test_processing_uses_custom_preset(tmp_path):
+    from app.main import get_media_service
+
+    client = make_client(tmp_path, transcription_provider="mock", minutes_provider="mock")
+    headers = auth_headers(client)
+    use_immediate_processing_queue()
+    app.dependency_overrides[get_media_service] = lambda: FakeMediaService(
+        get_settings()
+    )
+    preset = client.post(
+        "/api/presets",
+        headers=headers,
+        json={
+            "name": "Ata executiva",
+            "description": "Modelo para diretoria.",
+            "instructions": (
+                "Gere um resumo executivo curto, destaque decisoes estrategicas e liste riscos "
+                "com impacto financeiro."
+            ),
+        },
+    ).json()
+    meeting = client.post(
+        "/api/meetings",
+        headers=headers,
+        json={
+            "title": "Comite executivo",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+    client.post(
+        f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
+        files={"file": ("audio.mp3", b"audio simulado", "audio/mpeg")},
+    )
+
+    response = client.post(
+        f"/api/meetings/{meeting['id']}/process",
+        headers=headers,
+        json={"mode": "audio_only", "preset_id": preset["id"]},
+    )
+
+    assert response.status_code == 200
+    processed = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
+    assert processed["preset"] == "Ata executiva"
+    assert processed["preset_id"] == preset["id"]
+    assert "resumo executivo curto" in processed["preset_instructions"]
+    assert "- Preset: Ata executiva" in processed["analysis"]["minutes_markdown"]
+
+
 def test_rejects_unsupported_upload(tmp_path):
     client = make_client(tmp_path)
     headers = auth_headers(client)

@@ -5,6 +5,8 @@ import type {
   Meeting,
   MeetingAnalysisUpdate,
   MeetingCreate,
+  MeetingPreset,
+  MeetingPresetPayload,
   RegisterPayload,
   User,
 } from "./types";
@@ -29,6 +31,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
     throw new Error(error.detail ?? "Erro inesperado.");
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
   }
 
   return response.json() as Promise<T>;
@@ -62,6 +68,32 @@ export async function listMeetings(): Promise<Meeting[]> {
   return data.items;
 }
 
+export async function listPresets(): Promise<MeetingPreset[]> {
+  const data = await request<{ items: MeetingPreset[] }>("/api/presets");
+  return data.items;
+}
+
+export async function createPreset(payload: MeetingPresetPayload): Promise<MeetingPreset> {
+  return request<MeetingPreset>("/api/presets", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updatePreset(
+  presetId: string,
+  payload: MeetingPresetPayload,
+): Promise<MeetingPreset> {
+  return request<MeetingPreset>(`/api/presets/${presetId}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deletePreset(presetId: string): Promise<void> {
+  await request<void>(`/api/presets/${presetId}`, { method: "DELETE" });
+}
+
 export async function createMeeting(payload: MeetingCreate): Promise<Meeting> {
   return request<Meeting>("/api/meetings", {
     method: "POST",
@@ -82,11 +114,11 @@ export async function uploadMeetingFile(meetingId: string, file: File): Promise<
 export async function processMeeting(
   meetingId: string,
   mode: AnalysisMode,
-  preset = "ata_objetiva_com_tarefas",
+  presetId?: string | null,
 ): Promise<Meeting> {
   return request<Meeting>(`/api/meetings/${meetingId}/process`, {
     method: "POST",
-    body: JSON.stringify({ mode, preset }),
+    body: JSON.stringify({ mode, preset_id: presetId }),
   });
 }
 

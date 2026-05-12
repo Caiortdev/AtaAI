@@ -200,6 +200,7 @@ class OpenAIMinutesProvider(MinutesProvider):
             "participantes": meeting.participants,
             "observacoes": meeting.notes or "",
             "preset": meeting.preset,
+            "instrucoes_do_preset": meeting.preset_instructions or "",
         }
         return {
             "model": self.settings.minutes_model,
@@ -210,7 +211,8 @@ class OpenAIMinutesProvider(MinutesProvider):
                         "Voce transforma transcricoes de reunioes com clientes em atas "
                         "objetivas, tarefas acionaveis e prioridades justificadas. "
                         "Nao invente informacoes. Quando responsavel, prazo ou timestamp nao "
-                        "forem citados, use string vazia."
+                        "forem citados, use string vazia. Siga as instrucoes do preset "
+                        "informado nos metadados."
                     ),
                 },
                 {
@@ -312,6 +314,7 @@ class GeminiMinutesProvider(MinutesProvider):
             "participantes": meeting.participants,
             "observacoes": meeting.notes or "",
             "preset": meeting.preset,
+            "instrucoes_do_preset": meeting.preset_instructions or "",
         }
         return {
             "contents": [
@@ -323,8 +326,9 @@ class GeminiMinutesProvider(MinutesProvider):
                                 "Voce transforma transcricoes de reunioes com clientes em atas "
                                 "objetivas, tarefas acionaveis e prioridades justificadas. "
                                 "Nao invente informacoes. Quando responsavel, prazo ou timestamp "
-                                "nao forem citados, use string vazia. Retorne somente JSON valido "
-                                "no schema solicitado.\n\n"
+                                "nao forem citados, use string vazia. Siga as instrucoes do preset "
+                                "informado nos metadados. Retorne somente JSON valido no schema "
+                                "solicitado.\n\n"
                                 "Metadados da reuniao:\n"
                                 f"{json.dumps(metadata, ensure_ascii=False)}\n\n"
                                 "Transcricao:\n"

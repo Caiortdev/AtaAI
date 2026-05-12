@@ -14,7 +14,17 @@ from app.auth import (
     verify_password,
 )
 from app.config import Settings
-from app.domain import Meeting, MeetingCreate, MeetingStatus, UploadedFileInfo, UserPublic, UserRegister
+from app.domain import (
+    Meeting,
+    MeetingCreate,
+    MeetingPreset,
+    MeetingPresetCreate,
+    MeetingPresetUpdate,
+    MeetingStatus,
+    UploadedFileInfo,
+    UserPublic,
+    UserRegister,
+)
 
 
 class MeetingRepository(Protocol):
@@ -44,6 +54,25 @@ class AuthRepository(Protocol):
     def get_user_by_token(self, token: str) -> UserPublic | None: ...
 
     def revoke_session(self, token: str) -> None: ...
+
+
+class PresetRepository(Protocol):
+    def list(self, owner_id: str) -> list[MeetingPreset]: ...
+
+    def get(self, preset_id: str, owner_id: str) -> MeetingPreset | None: ...
+
+    def create(self, payload: MeetingPresetCreate, owner_id: str) -> MeetingPreset: ...
+
+    def update(
+        self,
+        preset_id: str,
+        payload: MeetingPresetUpdate,
+        owner_id: str,
+    ) -> MeetingPreset | None: ...
+
+    def delete(self, preset_id: str, owner_id: str) -> bool: ...
+
+    def ensure_default(self, owner_id: str) -> MeetingPreset: ...
 
 
 class JsonMeetingRepository:
@@ -421,6 +450,145 @@ class SQLiteAuthRepository:
         return str(uuid4())
 
 
+class SQLitePresetRepository:
+    _lock = threading.RLock()
+
+    def __init__(self, database_path: Path) -> None:
+        self.database_path = database_path
+        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        self._migrate()
+
+    def list(self, owner_id: str) -> list[MeetingPreset]:
+        self.ensure_default(owner_id)
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT payload FROM meeting_presets
+                WHERE owner_id = ?
+                ORDER BY is_default DESC, updated_at DESC
+                """,
+                (owner_id,),
+            ).fetchall()
+            return [MeetingPreset.model_validate_json(row["payload"]) for row in rows]
+
+    def get(self, preset_id: str, owner_id: str) -> MeetingPreset | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT payload FROM meeting_presets WHERE id = ? AND owner_id = ?",
+                (preset_id, owner_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return MeetingPreset.model_validate_json(row["payload"])
+
+    def create(self, payload: MeetingPresetCreate, owner_id: str) -> MeetingPreset:
+        preset = MeetingPreset(**payload.model_dump(), owner_id=owner_id)
+        return self._save(preset)
+
+    def update(
+        self,
+        preset_id: str,
+        payload: MeetingPresetUpdate,
+        owner_id: str,
+    ) -> MeetingPreset | None:
+        preset = self.get(preset_id, owner_id)
+        if preset is None or preset.is_default:
+            return None
+        preset.name = payload.name
+        preset.description = payload.description
+        preset.instructions = payload.instructions
+        return self._save(preset)
+
+    def delete(self, preset_id: str, owner_id: str) -> bool:
+        preset = self.get(preset_id, owner_id)
+        if preset is None or preset.is_default:
+            return False
+        with self._lock, self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM meeting_presets WHERE id = ? AND owner_id = ?",
+                (preset_id, owner_id),
+            )
+            connection.commit()
+            return cursor.rowcount > 0
+
+    def ensure_default(self, owner_id: str) -> MeetingPreset:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT payload FROM meeting_presets WHERE owner_id = ? AND is_default = 1",
+                (owner_id,),
+            ).fetchone()
+            if row is not None:
+                return MeetingPreset.model_validate_json(row["payload"])
+
+        default = MeetingPreset(
+            owner_id=owner_id,
+            name="Ata objetiva com tarefas",
+            description="Modelo padrao para reunioes com clientes e demandas acionaveis.",
+            instructions=(
+                "Gere uma ata objetiva em portugues do Brasil. Separe resumo executivo, "
+                "topicos discutidos, decisoes, riscos, duvidas abertas e tarefas. Para cada "
+                "tarefa, defina prioridade de acordo com urgencia, impacto no cliente, bloqueio "
+                "operacional e prazo citado na reuniao. Nao invente responsaveis ou prazos."
+            ),
+            is_default=True,
+        )
+        return self._save(default)
+
+    def _save(self, preset: MeetingPreset) -> MeetingPreset:
+        with self._lock, self._connect() as connection:
+            preset.updated_at = datetime.now(UTC)
+            connection.execute(
+                """
+                INSERT INTO meeting_presets (
+                    id, owner_id, name, is_default, created_at, updated_at, payload
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    name = excluded.name,
+                    updated_at = excluded.updated_at,
+                    payload = excluded.payload
+                """,
+                (
+                    preset.id,
+                    preset.owner_id,
+                    preset.name,
+                    int(preset.is_default),
+                    preset.created_at.isoformat(),
+                    preset.updated_at.isoformat(),
+                    preset.model_dump_json(),
+                ),
+            )
+            connection.commit()
+            return preset
+
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.database_path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def _migrate(self) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS meeting_presets (
+                    id TEXT PRIMARY KEY,
+                    owner_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    is_default INTEGER NOT NULL DEFAULT 0,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    FOREIGN KEY(owner_id) REFERENCES users(id)
+                )
+                """
+            )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_meeting_presets_owner_id "
+                "ON meeting_presets(owner_id)"
+            )
+            connection.commit()
+
+
 def build_meeting_repository(settings: Settings) -> MeetingRepository:
     backend = settings.database_backend.lower().strip()
     if backend == "sqlite":
@@ -445,3 +613,15 @@ def build_auth_repository(settings: Settings) -> AuthRepository:
             "Use DATABASE_BACKEND=sqlite por enquanto."
         )
     raise RuntimeError("Autenticacao local exige DATABASE_BACKEND=sqlite neste MVP.")
+
+
+def build_preset_repository(settings: Settings) -> PresetRepository:
+    backend = settings.database_backend.lower().strip()
+    if backend == "sqlite":
+        return SQLitePresetRepository(settings.database_path)
+    if backend == "postgres":
+        raise RuntimeError(
+            "PostgreSQL esta arquitetado como backend futuro, mas ainda nao esta ativo neste MVP. "
+            "Use DATABASE_BACKEND=sqlite por enquanto."
+        )
+    raise RuntimeError("Presets personalizados exigem DATABASE_BACKEND=sqlite neste MVP.")

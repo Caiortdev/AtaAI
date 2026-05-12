@@ -64,6 +64,32 @@ class AuthToken(BaseModel):
     user: UserPublic
 
 
+class MeetingPresetBase(BaseModel):
+    name: str = Field(min_length=3, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    instructions: str = Field(min_length=20, max_length=4000)
+
+
+class MeetingPresetCreate(MeetingPresetBase):
+    pass
+
+
+class MeetingPresetUpdate(MeetingPresetBase):
+    pass
+
+
+class MeetingPreset(MeetingPresetBase):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    owner_id: str
+    is_default: bool = False
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class MeetingPresetListResponse(BaseModel):
+    items: list[MeetingPreset]
+
+
 class UploadedFileInfo(BaseModel):
     original_name: str
     stored_name: str
@@ -135,6 +161,8 @@ class Meeting(BaseModel):
     status: MeetingStatus = MeetingStatus.draft
     analysis_mode: AnalysisMode | None = None
     preset: str = "ata_objetiva_com_tarefas"
+    preset_id: str | None = None
+    preset_instructions: str | None = None
     file: UploadedFileInfo | None = None
     prepared_audio: PreparedAudioInfo | None = None
     analysis: MeetingAnalysis | None = None
@@ -147,6 +175,7 @@ class Meeting(BaseModel):
 class ProcessMeetingRequest(BaseModel):
     mode: AnalysisMode = AnalysisMode.audio_only
     preset: str = "ata_objetiva_com_tarefas"
+    preset_id: str | None = None
 
 
 class MeetingListResponse(BaseModel):

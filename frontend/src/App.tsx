@@ -4,14 +4,18 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   createMeeting,
+  createPreset,
+  deletePreset,
   exportMeetingPdf,
   loginUser,
   listMeetings,
+  listPresets,
   logoutUser,
   processMeeting,
   registerUser,
   setAuthToken,
   updateMeetingAnalysis,
+  updatePreset,
   uploadMeetingFile,
 } from "./api";
 import { useWorkspaceStore } from "./store";
@@ -21,6 +25,8 @@ import type {
   Meeting,
   MeetingAnalysis,
   MeetingAnalysisUpdate,
+  MeetingPreset,
+  MeetingPresetPayload,
   Priority,
   RegisterPayload,
   TaskItem,
@@ -73,6 +79,7 @@ export default function App() {
   });
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("audio_only");
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -85,6 +92,12 @@ export default function App() {
     enabled: Boolean(accessToken),
   });
 
+  const presetsQuery = useQuery({
+    queryKey: ["presets", accessToken],
+    queryFn: listPresets,
+    enabled: Boolean(accessToken),
+  });
+
   const meetings = meetingsQuery.data ?? [];
   const selectedMeeting = useMemo(
     () => meetings.find((meeting) => meeting.id === selectedMeetingId) ?? meetings[0],
@@ -93,6 +106,12 @@ export default function App() {
   const hasRunningMeeting = meetings.some(
     (meeting) => meeting.status === "queued" || meeting.status === "processing",
   );
+  const presets = presetsQuery.data ?? [];
+
+  useEffect(() => {
+    if (!presets.length || selectedPresetId) return;
+    setSelectedPresetId(presets[0].id);
+  }, [presets, selectedPresetId]);
 
   useEffect(() => {
     if (!hasRunningMeeting) return undefined;
@@ -134,7 +153,7 @@ export default function App() {
 
   const processMutation = useMutation({
     mutationFn: ({ meetingId, mode }: { meetingId: string; mode: AnalysisMode }) =>
-      processMeeting(meetingId, mode),
+      processMeeting(meetingId, mode, selectedPresetId),
     onSuccess: async (meeting) => {
       selectMeeting(meeting.id);
       await queryClient.invalidateQueries({ queryKey: ["meetings"] });
@@ -260,6 +279,12 @@ export default function App() {
               </button>
             </form>
           </Panel>
+
+          <PresetsPanel
+            presets={presets}
+            selectedPresetId={selectedPresetId}
+            onSelectPreset={setSelectedPresetId}
+          />
 
           <Panel title="Reunioes">
             {meetingsQuery.isLoading ? (
@@ -496,6 +521,164 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
       {children}
     </label>
+  );
+}
+
+function PresetsPanel({
+  presets,
+  selectedPresetId,
+  onSelectPreset,
+}: {
+  presets: MeetingPreset[];
+  selectedPresetId: string | null;
+  onSelectPreset: (id: string) => void;
+}) {
+  const queryClient = useQueryClient();
+  const selectedPreset = presets.find((preset) => preset.id === selectedPresetId) ?? presets[0];
+  const [draft, setDraft] = useState<MeetingPresetPayload>({
+    name: "",
+    description: "",
+    instructions: "",
+  });
+  const [presetError, setPresetError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedPreset || selectedPreset.is_default) {
+      setDraft({ name: "", description: "", instructions: "" });
+      return;
+    }
+    setDraft({
+      name: selectedPreset.name,
+      description: selectedPreset.description ?? "",
+      instructions: selectedPreset.instructions,
+    });
+  }, [selectedPreset]);
+
+  const createMutation = useMutation({
+    mutationFn: createPreset,
+    onSuccess: async (preset) => {
+      setPresetError(null);
+      onSelectPreset(preset.id);
+      await queryClient.invalidateQueries({ queryKey: ["presets"] });
+    },
+    onError: (mutationError) => setPresetError(mutationError.message),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: MeetingPresetPayload }) =>
+      updatePreset(id, payload),
+    onSuccess: async (preset) => {
+      setPresetError(null);
+      onSelectPreset(preset.id);
+      await queryClient.invalidateQueries({ queryKey: ["presets"] });
+    },
+    onError: (mutationError) => setPresetError(mutationError.message),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deletePreset,
+    onSuccess: async () => {
+      setPresetError(null);
+      const defaultPreset = presets.find((preset) => preset.is_default) ?? presets[0];
+      if (defaultPreset) onSelectPreset(defaultPreset.id);
+      await queryClient.invalidateQueries({ queryKey: ["presets"] });
+    },
+    onError: (mutationError) => setPresetError(mutationError.message),
+  });
+
+  function savePreset() {
+    const payload = {
+      name: draft.name.trim(),
+      description: draft.description?.trim() || null,
+      instructions: draft.instructions.trim(),
+    };
+    if (selectedPreset && !selectedPreset.is_default) {
+      updateMutation.mutate({ id: selectedPreset.id, payload });
+      return;
+    }
+    createMutation.mutate(payload);
+  }
+
+  const canEditSelected = Boolean(selectedPreset && !selectedPreset.is_default);
+  const isPending = createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+
+  return (
+    <Panel title="Presets de ata">
+      <div className="space-y-4">
+        <Field label="Modelo usado na geracao">
+          <select
+            className="input"
+            value={selectedPreset?.id ?? ""}
+            onChange={(event) => onSelectPreset(event.target.value)}
+          >
+            {presets.map((preset) => (
+              <option key={preset.id} value={preset.id}>
+                {preset.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        {selectedPreset?.description ? (
+          <p className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            {selectedPreset.description}
+          </p>
+        ) : null}
+
+        <div className="space-y-3 border-t border-slate-200 pt-4">
+          <Field label={canEditSelected ? "Nome do preset" : "Nome do novo preset"}>
+            <input
+              className="input"
+              minLength={3}
+              value={draft.name}
+              onChange={(event) => setDraft({ ...draft, name: event.target.value })}
+              placeholder="Ata executiva"
+            />
+          </Field>
+          <Field label="Descricao">
+            <input
+              className="input"
+              value={draft.description ?? ""}
+              onChange={(event) => setDraft({ ...draft, description: event.target.value })}
+              placeholder="Quando usar este modelo"
+            />
+          </Field>
+          <Field label="Instrucoes para IA">
+            <textarea
+              className="input min-h-28 resize-y"
+              value={draft.instructions}
+              onChange={(event) => setDraft({ ...draft, instructions: event.target.value })}
+              placeholder="Ex: foque em decisoes, riscos e proximos passos executivos."
+            />
+          </Field>
+
+          {presetError ? (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              {presetError}
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="button-primary"
+              disabled={isPending || draft.name.trim().length < 3 || draft.instructions.trim().length < 20}
+              onClick={savePreset}
+            >
+              {isPending ? "Salvando..." : canEditSelected ? "Salvar preset" : "Criar preset"}
+            </button>
+            {canEditSelected && selectedPreset ? (
+              <button
+                className="button-secondary"
+                disabled={isPending}
+                onClick={() => deleteMutation.mutate(selectedPreset.id)}
+              >
+                Remover
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </Panel>
   );
 }
 

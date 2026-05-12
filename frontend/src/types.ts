@@ -25,6 +25,23 @@ export type RegisterPayload = AuthPayload & {
   name: string;
 };
 
+export type MeetingPreset = {
+  id: string;
+  owner_id: string;
+  name: string;
+  description?: string | null;
+  instructions: string;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MeetingPresetPayload = {
+  name: string;
+  description?: string | null;
+  instructions: string;
+};
+
 export type UploadedFileInfo = {
   original_name: string;
   stored_name: string;
@@ -86,6 +103,8 @@ export type Meeting = {
   status: MeetingStatus;
   analysis_mode?: AnalysisMode | null;
   preset: string;
+  preset_id?: string | null;
+  preset_instructions?: string | null;
   file?: UploadedFileInfo | null;
   prepared_audio?: PreparedAudioInfo | null;
   analysis?: MeetingAnalysis | null;

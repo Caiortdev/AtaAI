@@ -27,7 +27,8 @@ Para entender o projeto do zero:
 8. [Fase 6 - Processamento assincrono](./phases/phase-6-async-processing.md)
 9. [Fase 7 - Persistencia SQLite e arquitetura PostgreSQL](./phases/phase-7-database-architecture.md)
 10. [Fase 8 - Login, privacidade e controle de acesso](./phases/phase-8-auth-access-control.md)
-11. [Stack tecnica escolhida](./architecture/stack.md)
+11. [Fase 9 - Presets personalizados de ata](./phases/phase-9-custom-presets.md)
+12. [Stack tecnica escolhida](./architecture/stack.md)
 
 ## Status das fases
 
@@ -42,12 +43,12 @@ Para entender o projeto do zero:
 | Fase 6 | [phase-6-async-processing.md](./phases/phase-6-async-processing.md) | Concluida | Fila local para processar reunioes em background. |
 | Fase 7 | [phase-7-database-architecture.md](./phases/phase-7-database-architecture.md) | Concluida | SQLite ativo com arquitetura preparada para PostgreSQL. |
 | Fase 8 | [phase-8-auth-access-control.md](./phases/phase-8-auth-access-control.md) | Concluida | Cadastro, login e isolamento de reunioes por usuario. |
+| Fase 9 | [phase-9-custom-presets.md](./phases/phase-9-custom-presets.md) | Concluida | Presets personalizados de ata por usuario. |
 
 ## Proximas fases previstas
 
 | Fase | Objetivo |
 | --- | --- |
-| Fase 9 | Presets personalizados de ata. |
 | Fase 10 | PWA para uso em celular. |
 | Fase 11 | Instalavel desktop com Tauri. |
 | Fase 12 | Instalavel mobile com Capacitor. |
@@ -80,6 +81,6 @@ Estrutura recomendada:
 
 ## Estado atual do MVP
 
-O MVP ja consegue cadastrar usuarios, autenticar com sessao local, receber arquivo de reuniao, preparar audio real, enfileirar o processamento, persistir dados em SQLite, isolar reunioes por usuario, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana e exportar a ata revisada em PDF.
+O MVP ja consegue cadastrar usuarios, autenticar com sessao local, receber arquivo de reuniao, preparar audio real, enfileirar o processamento, persistir dados em SQLite, isolar reunioes por usuario, criar presets personalizados, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana e exportar a ata revisada em PDF.
 
 As Fases 2 e 3 foram validadas em fluxo real no dia 2026-05-11, com audio de teste, transcricao Gemini e geracao de ata/tarefas Gemini.

@@ -25,7 +25,8 @@ class MeetingProcessor:
     def process(self, meeting: Meeting, request: ProcessMeetingRequest) -> Meeting:
         meeting.status = MeetingStatus.processing
         meeting.analysis_mode = request.mode
-        meeting.preset = request.preset
+        if not meeting.preset_id:
+            meeting.preset = request.preset
         meeting.processing_error = None
         if "Processamento enfileirado" in meeting.processing_steps:
             meeting.processing_steps.append("Processamento iniciado")

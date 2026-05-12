@@ -71,6 +71,7 @@ Esta primeira base ja inclui:
 - processamento em fila local para nao travar a requisicao enquanto a IA trabalha;
 - persistencia em SQLite com camada preparada para migrar para PostgreSQL;
 - cadastro, login e isolamento das reunioes por usuario;
+- presets personalizados de ata por usuario;
 - tela inicial do MVP em React.
 
 Redis/Celery distribuido, PostgreSQL ativo, organizacoes/permissoes avancadas e storage externo serao adicionados nas proximas etapas.

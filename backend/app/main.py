@@ -12,6 +12,10 @@ from app.domain import (
     MeetingAnalysisUpdate,
     MeetingCreate,
     MeetingListResponse,
+    MeetingPreset,
+    MeetingPresetCreate,
+    MeetingPresetListResponse,
+    MeetingPresetUpdate,
     MeetingStatus,
     ProcessMeetingRequest,
     UploadedFileInfo,
@@ -24,7 +28,14 @@ from app.media import MediaService, MediaValidationError
 from app.minutes import build_minutes_provider
 from app.pdf_export import generate_meeting_pdf, pdf_filename
 from app.processing import MeetingProcessor
-from app.repository import AuthRepository, MeetingRepository, build_auth_repository, build_meeting_repository
+from app.repository import (
+    AuthRepository,
+    MeetingRepository,
+    PresetRepository,
+    build_auth_repository,
+    build_meeting_repository,
+    build_preset_repository,
+)
 from app.transcription import build_transcription_provider
 
 
@@ -37,6 +48,10 @@ def get_repository(settings: Settings = Depends(get_settings)) -> MeetingReposit
 
 def get_auth_repository(settings: Settings = Depends(get_settings)) -> AuthRepository:
     return build_auth_repository(settings)
+
+
+def get_preset_repository(settings: Settings = Depends(get_settings)) -> PresetRepository:
+    return build_preset_repository(settings)
 
 
 def get_media_service(settings: Settings = Depends(get_settings)) -> MediaService:
@@ -177,6 +192,54 @@ def logout_user(
     return {"status": "ok"}
 
 
+@app.get("/api/presets", response_model=MeetingPresetListResponse)
+def list_presets(
+    current_user: UserPublic = Depends(get_current_user),
+    preset_repository: PresetRepository = Depends(get_preset_repository),
+) -> MeetingPresetListResponse:
+    return MeetingPresetListResponse(items=preset_repository.list(current_user.id))
+
+
+@app.post("/api/presets", response_model=MeetingPreset, status_code=status.HTTP_201_CREATED)
+def create_preset(
+    payload: MeetingPresetCreate,
+    current_user: UserPublic = Depends(get_current_user),
+    preset_repository: PresetRepository = Depends(get_preset_repository),
+) -> MeetingPreset:
+    return preset_repository.create(payload, current_user.id)
+
+
+@app.patch("/api/presets/{preset_id}", response_model=MeetingPreset)
+def update_preset(
+    preset_id: str,
+    payload: MeetingPresetUpdate,
+    current_user: UserPublic = Depends(get_current_user),
+    preset_repository: PresetRepository = Depends(get_preset_repository),
+) -> MeetingPreset:
+    preset = preset_repository.update(preset_id, payload, current_user.id)
+    if preset is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preset nao encontrado ou protegido contra edicao.",
+        )
+    return preset
+
+
+@app.delete("/api/presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_preset(
+    preset_id: str,
+    current_user: UserPublic = Depends(get_current_user),
+    preset_repository: PresetRepository = Depends(get_preset_repository),
+) -> Response:
+    deleted = preset_repository.delete(preset_id, current_user.id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Preset nao encontrado ou protegido contra exclusao.",
+        )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @app.get("/api/meetings", response_model=MeetingListResponse)
 def list_meetings(
     repository: MeetingRepository = Depends(get_repository),
@@ -263,6 +326,7 @@ def process_meeting(
     processor: MeetingProcessor = Depends(get_processor),
     queue: ProcessingQueue = Depends(get_processing_queue),
     current_user: UserPublic = Depends(get_current_user),
+    preset_repository: PresetRepository = Depends(get_preset_repository),
 ) -> Meeting:
     meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
@@ -278,9 +342,13 @@ def process_meeting(
             detail="Esta reuniao ja esta na fila ou em processamento.",
         )
 
+    preset = resolve_processing_preset(payload, current_user.id, preset_repository)
+
     meeting.status = MeetingStatus.queued
     meeting.analysis_mode = payload.mode
-    meeting.preset = payload.preset
+    meeting.preset = preset.name
+    meeting.preset_id = preset.id
+    meeting.preset_instructions = preset.instructions
     meeting.processing_error = None
     meeting.processing_steps = ["Arquivo recebido", "Processamento enfileirado"]
     queued = repository.save(meeting)
@@ -289,6 +357,20 @@ def process_meeting(
         run=lambda: run_processing_job(meeting.id, payload, repository, processor),
     )
     return queued
+
+
+def resolve_processing_preset(
+    payload: ProcessMeetingRequest,
+    owner_id: str,
+    preset_repository: PresetRepository,
+) -> MeetingPreset:
+    if payload.preset_id:
+        preset = preset_repository.get(payload.preset_id, owner_id)
+        if preset is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Preset nao encontrado.")
+        return preset
+
+    return preset_repository.ensure_default(owner_id)
 
 
 def run_processing_job(

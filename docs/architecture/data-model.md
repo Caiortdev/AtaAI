@@ -15,6 +15,7 @@ Tabela atual:
 ```text
 users
 sessions
+meeting_presets
 meetings
 ```
 
@@ -52,12 +53,25 @@ meetings
 | `updated_at` | TEXT | Ultima atualizacao em ISO 8601. |
 | `payload` | TEXT | JSON completo da reuniao serializada pelo Pydantic. |
 
+### `meeting_presets`
+
+| Campo | Tipo | Uso |
+| --- | --- | --- |
+| `id` | TEXT | Identificador do preset. |
+| `owner_id` | TEXT | Usuario dono do preset. |
+| `name` | TEXT | Nome exibido no app. |
+| `is_default` | INTEGER | Indica se e o preset padrao protegido. |
+| `created_at` | TEXT | Data de criacao em ISO 8601. |
+| `updated_at` | TEXT | Ultima atualizacao em ISO 8601. |
+| `payload` | TEXT | JSON completo do preset serializado pelo Pydantic. |
+
 Indices:
 
 ```text
 idx_users_email
 idx_sessions_token_hash
 idx_sessions_user_id
+idx_meeting_presets_owner_id
 idx_meetings_owner_id
 idx_meetings_status
 idx_meetings_updated_at
@@ -101,6 +115,18 @@ CREATE INDEX idx_meetings_owner_id ON meetings(owner_id);
 CREATE INDEX idx_meetings_status ON meetings(status);
 CREATE INDEX idx_meetings_updated_at ON meetings(updated_at);
 CREATE INDEX idx_meetings_payload_gin ON meetings USING GIN(payload);
+
+CREATE TABLE meeting_presets (
+  id UUID PRIMARY KEY,
+  owner_id UUID NOT NULL REFERENCES users(id),
+  name TEXT NOT NULL,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  payload JSONB NOT NULL
+);
+
+CREATE INDEX idx_meeting_presets_owner_id ON meeting_presets(owner_id);
 ```
 
 ## Modelo relacional futuro
@@ -112,6 +138,7 @@ Depois que login e organizacoes entrarem, o modelo pode evoluir para:
 - `clients`;
 - `meetings`;
 - `meeting_files`;
+- `meeting_presets`;
 - `meeting_analyses`;
 - `meeting_tasks`;
 - `meeting_exports`;
