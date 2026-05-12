@@ -16,7 +16,9 @@ Usaremos Tauri em fase posterior para gerar instalaveis desktop leves. A decisao
 
 ## Mobile
 
-O mobile comeca como PWA responsiva. Isso permite validar o uso no celular antes de entrar em assinatura, distribuicao e builds nativos.
+O mobile comeca como PWA responsiva e instalavel. Isso permite validar o uso no celular antes de entrar em assinatura, distribuicao e builds nativos.
+
+A PWA atual usa manifesto web, service worker manual, icone do app, tema mobile e tela offline basica. Ela nao substitui uma aplicacao nativa, mas permite abrir o AtaAI pelo navegador e adicionar o app a tela inicial em Android e iOS.
 
 Depois, usaremos Capacitor para empacotar Android e iOS. Android pode ser distribuido por APK assinado fora da Play Store. iOS deve seguir TestFlight, App Store, Ad Hoc ou distribuicao empresarial.
 

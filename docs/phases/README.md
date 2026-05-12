@@ -16,6 +16,7 @@ Esta pasta documenta a evolucao do MVP por fases. Cada fase explica o objetivo, 
 | Fase 7 | [phase-7-database-architecture.md](./phase-7-database-architecture.md) | Concluida |
 | Fase 8 | [phase-8-auth-access-control.md](./phase-8-auth-access-control.md) | Concluida |
 | Fase 9 | [phase-9-custom-presets.md](./phase-9-custom-presets.md) | Concluida |
+| Fase 10 | [phase-10-pwa-mobile.md](./phase-10-pwa-mobile.md) | Concluida |
 
 ## Como atualizar
 

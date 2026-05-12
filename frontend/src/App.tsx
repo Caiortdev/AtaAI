@@ -81,10 +81,24 @@ export default function App() {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("audio_only");
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
 
   useEffect(() => {
     setAuthToken(accessToken);
   }, [accessToken]);
+
+  useEffect(() => {
+    function updateOnlineStatus() {
+      setIsOnline(navigator.onLine);
+    }
+
+    window.addEventListener("online", updateOnlineStatus);
+    window.addEventListener("offline", updateOnlineStatus);
+    return () => {
+      window.removeEventListener("online", updateOnlineStatus);
+      window.removeEventListener("offline", updateOnlineStatus);
+    };
+  }, []);
 
   const meetingsQuery = useQuery({
     queryKey: ["meetings", accessToken],
@@ -201,14 +215,25 @@ export default function App() {
   return (
     <main className="min-h-screen bg-cloud text-ink">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-lagoon">MVP</p>
             <h1 className="text-2xl font-semibold">Ata de reuniao por IA</h1>
           </div>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600">
-            {user.name}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`rounded-full border px-3 py-1 text-sm ${
+                isOnline
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-200 bg-amber-50 text-amber-900"
+              }`}
+            >
+              {isOnline ? "Online" : "Offline"}
+            </span>
+            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm text-slate-600">
+              {user.name}
+            </span>
+          </div>
           <button
             className="button-secondary"
             disabled={logoutMutation.isPending}

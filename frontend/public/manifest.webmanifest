@@ -1,0 +1,21 @@
+{
+  "name": "AtaAI - Ata de reuniao por IA",
+  "short_name": "AtaAI",
+  "description": "Gere atas, transcricoes e tarefas priorizadas a partir de reunioes com clientes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f6f8fb",
+  "theme_color": "#0f766e",
+  "categories": ["business", "productivity"],
+  "lang": "pt-BR",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
