@@ -24,7 +24,11 @@ Depois, usaremos Capacitor para empacotar Android e iOS. Android pode ser distri
 
 Usaremos Python com FastAPI. O backend precisa receber arquivos grandes, controlar jobs, extrair audio, chamar transcricao, chamar LLM, salvar resultados e gerar PDF.
 
-No MVP local, o processamento comeca de forma plugavel e simulada. Em seguida entram Redis, Celery, PostgreSQL, FFmpeg e storage S3-compatible.
+No MVP local, a persistencia ativa usa SQLite para reduzir complexidade de instalacao. A camada de repositório ja foi separada por backend para permitir migracao futura para PostgreSQL sem reescrever endpoints, processamento ou frontend.
+
+PostgreSQL continua sendo o banco alvo para producao, principalmente quando houver login, multiplos usuarios, historico maior, auditoria e consultas mais complexas.
+
+Redis/Celery distribuido e storage S3-compatible entram em fases posteriores.
 
 ## IA
 

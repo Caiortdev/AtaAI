@@ -10,8 +10,9 @@ MVP para capturar reunioes com clientes, processar audio/video, gerar transcrica
 - Desktop futuro: Tauri usando o mesmo frontend React.
 - Mobile inicial: PWA; empacotamento futuro com Capacitor.
 - Backend: Python, FastAPI e Pydantic.
-- Processamento futuro: Redis, Celery e FFmpeg.
-- Banco futuro: PostgreSQL.
+- Processamento: fila local no MVP; Redis/Celery distribuido no futuro.
+- Banco atual: SQLite.
+- Banco arquitetado para migracao: PostgreSQL.
 - Armazenamento futuro: storage S3-compatible.
 
 ## Estrutura
@@ -67,9 +68,10 @@ Esta primeira base ja inclui:
 - revisao humana da ata e das tarefas;
 - exportacao da ata revisada em PDF;
 - processamento em fila local para nao travar a requisicao enquanto a IA trabalha;
+- persistencia em SQLite com camada preparada para migrar para PostgreSQL;
 - tela inicial do MVP em React.
 
-Redis/Celery distribuido, PostgreSQL e storage externo serao adicionados nas proximas etapas.
+Redis/Celery distribuido, PostgreSQL ativo e storage externo serao adicionados nas proximas etapas.
 
 ## Geracao de ata e tarefas
 

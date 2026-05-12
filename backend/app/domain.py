@@ -131,6 +131,7 @@ class MeetingListResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     service: str
+    database: dict[str, str | bool] = Field(default_factory=dict)
     media_tools: dict[str, bool] = Field(default_factory=dict)
     transcription: dict[str, str | bool] = Field(default_factory=dict)
     minutes: dict[str, str | bool] = Field(default_factory=dict)

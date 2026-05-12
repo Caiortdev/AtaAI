@@ -1,9 +1,10 @@
 from fastapi.testclient import TestClient
 
 from app.config import Settings, get_settings
+from app.domain import MeetingCreate, PreparedAudioInfo
 from app.main import app, get_processing_queue
-from app.domain import PreparedAudioInfo
 from app.media import MediaService
+from app.repository import JsonMeetingRepository, SQLiteMeetingRepository, build_meeting_repository
 
 
 class FakeMediaService(MediaService):
@@ -53,6 +54,8 @@ def make_client(tmp_path, **settings_overrides):
         ffmpeg_binary="missing-ffmpeg-for-test",
         ffprobe_binary="missing-ffprobe-for-test",
         local_media_tools_enabled=False,
+        database_backend="sqlite",
+        database_path=tmp_path / "ataai.sqlite3",
         gemini_api_key=gemini_api_key,
         openai_api_key=openai_api_key,
         **settings_overrides,
@@ -73,9 +76,76 @@ def test_health(tmp_path):
 
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.json()["database"]["backend"] == "sqlite"
+    assert response.json()["database"]["configured"] is True
     assert response.json()["media_tools"] == {"ffmpeg": False, "ffprobe": False}
     assert response.json()["transcription"]["provider"] == "gemini"
     assert response.json()["minutes"]["provider"] == "gemini"
+
+
+def test_uses_sqlite_repository_by_default(tmp_path):
+    settings = Settings(
+        storage_dir=tmp_path,
+        database_backend="sqlite",
+        database_path=tmp_path / "ataai.sqlite3",
+        gemini_api_key=None,
+        openai_api_key=None,
+    )
+
+    repository = build_meeting_repository(settings)
+
+    assert isinstance(repository, SQLiteMeetingRepository)
+
+
+def test_json_repository_remains_available_as_fallback(tmp_path):
+    settings = Settings(
+        storage_dir=tmp_path,
+        database_backend="json",
+        database_path=tmp_path / "ataai.sqlite3",
+        gemini_api_key=None,
+        openai_api_key=None,
+    )
+
+    repository = build_meeting_repository(settings)
+
+    assert isinstance(repository, JsonMeetingRepository)
+
+
+def test_sqlite_repository_imports_legacy_json_when_empty(tmp_path):
+    legacy_repository = JsonMeetingRepository(tmp_path)
+    created = legacy_repository.create(
+        MeetingCreate(
+            title="Reuniao legado",
+            client_name="Cliente",
+            participants=[],
+            notes=None,
+            consent_confirmed=True,
+        )
+    )
+
+    repository = SQLiteMeetingRepository(tmp_path / "ataai.sqlite3")
+
+    imported = repository.get(created.id)
+    assert imported is not None
+    assert imported.title == "Reuniao legado"
+
+
+def test_postgres_backend_is_reserved_until_driver_is_added(tmp_path):
+    settings = Settings(
+        storage_dir=tmp_path,
+        database_backend="postgres",
+        database_url="postgresql://ataai:senha@localhost:5432/ataai",
+        database_path=tmp_path / "ataai.sqlite3",
+        gemini_api_key=None,
+        openai_api_key=None,
+    )
+
+    try:
+        build_meeting_repository(settings)
+    except RuntimeError as exc:
+        assert "PostgreSQL" in str(exc)
+    else:
+        raise AssertionError("PostgreSQL backend should be explicit about not being active yet.")
 
 
 def test_rejects_unsupported_upload(tmp_path):

@@ -19,12 +19,12 @@ from app.media import MediaService, MediaValidationError
 from app.minutes import build_minutes_provider
 from app.pdf_export import generate_meeting_pdf, pdf_filename
 from app.processing import MeetingProcessor
-from app.repository import MeetingRepository
+from app.repository import MeetingRepository, build_meeting_repository
 from app.transcription import build_transcription_provider
 
 
 def get_repository(settings: Settings = Depends(get_settings)) -> MeetingRepository:
-    return MeetingRepository(settings.storage_dir)
+    return build_meeting_repository(settings)
 
 
 def get_media_service(settings: Settings = Depends(get_settings)) -> MediaService:
@@ -64,6 +64,11 @@ def health(
     return HealthResponse(
         status="ok",
         service=settings.app_name,
+        database={
+            "backend": settings.database_backend,
+            "path": str(settings.database_path) if settings.database_backend == "sqlite" else "",
+            "configured": database_configured(settings),
+        },
         media_tools=media_service.tools_status(),
         transcription={
             "provider": settings.transcription_provider,
@@ -88,6 +93,13 @@ def provider_configured(provider: str, settings: Settings) -> bool:
     if normalized == "openai":
         return bool(settings.openai_api_key)
     return True
+
+
+def database_configured(settings: Settings) -> bool:
+    backend = settings.database_backend.lower().strip()
+    if backend == "postgres":
+        return bool(settings.database_url)
+    return backend in {"sqlite", "json"}
 
 
 @app.get("/api/meetings", response_model=MeetingListResponse)

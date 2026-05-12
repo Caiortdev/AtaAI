@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     app_env: str = "development"
     frontend_origin: str = "http://127.0.0.1:5173"
     storage_dir: Path = Path("storage")
+    database_backend: str = "sqlite"
+    database_path: Path = Path("storage/ataai.sqlite3")
+    database_url: str | None = None
     max_upload_bytes: int = 500 * 1024 * 1024
     max_media_duration_seconds: int = 3 * 60 * 60
     ffmpeg_binary: str = "ffmpeg"

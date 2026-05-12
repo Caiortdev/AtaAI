@@ -13,6 +13,7 @@ Esta pasta documenta a evolucao do MVP por fases. Cada fase explica o objetivo, 
 | Fase 4 | [phase-4-human-review-editor.md](./phase-4-human-review-editor.md) | Concluida |
 | Fase 5 | [phase-5-pdf-export.md](./phase-5-pdf-export.md) | Concluida |
 | Fase 6 | [phase-6-async-processing.md](./phase-6-async-processing.md) | Concluida |
+| Fase 7 | [phase-7-database-architecture.md](./phase-7-database-architecture.md) | Concluida |
 
 ## Como atualizar
 
