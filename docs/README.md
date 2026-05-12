@@ -29,7 +29,8 @@ Para entender o projeto do zero:
 10. [Fase 8 - Login, privacidade e controle de acesso](./phases/phase-8-auth-access-control.md)
 11. [Fase 9 - Presets personalizados de ata](./phases/phase-9-custom-presets.md)
 12. [Fase 10 - PWA para uso no celular](./phases/phase-10-pwa-mobile.md)
-13. [Stack tecnica escolhida](./architecture/stack.md)
+13. [Fase 11 - Instalavel desktop com Tauri](./phases/phase-11-tauri-desktop.md)
+14. [Stack tecnica escolhida](./architecture/stack.md)
 
 ## Status das fases
 
@@ -46,12 +47,12 @@ Para entender o projeto do zero:
 | Fase 8 | [phase-8-auth-access-control.md](./phases/phase-8-auth-access-control.md) | Concluida | Cadastro, login e isolamento de reunioes por usuario. |
 | Fase 9 | [phase-9-custom-presets.md](./phases/phase-9-custom-presets.md) | Concluida | Presets personalizados de ata por usuario. |
 | Fase 10 | [phase-10-pwa-mobile.md](./phases/phase-10-pwa-mobile.md) | Concluida | Manifesto PWA, service worker e suporte basico offline. |
+| Fase 11 | [phase-11-tauri-desktop.md](./phases/phase-11-tauri-desktop.md) | Implementada | Scaffold Tauri desktop pronto; build do instalador depende de Rust/Cargo. |
 
 ## Proximas fases previstas
 
 | Fase | Objetivo |
 | --- | --- |
-| Fase 11 | Instalavel desktop com Tauri. |
 | Fase 12 | Instalavel mobile com Capacitor. |
 
 ## Padrao dos documentos de fase
@@ -82,6 +83,6 @@ Estrutura recomendada:
 
 ## Estado atual do MVP
 
-O MVP ja consegue cadastrar usuarios, autenticar com sessao local, receber arquivo de reuniao, preparar audio real, enfileirar o processamento, persistir dados em SQLite, isolar reunioes por usuario, criar presets personalizados, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana, exportar a ata revisada em PDF e instalar a interface como PWA em celulares compativeis.
+O MVP ja consegue cadastrar usuarios, autenticar com sessao local, receber arquivo de reuniao, preparar audio real, enfileirar o processamento, persistir dados em SQLite, isolar reunioes por usuario, criar presets personalizados, transcrever com Gemini, gerar ata/tarefas estruturadas com Gemini, permitir revisao humana, exportar a ata revisada em PDF, instalar a interface como PWA em celulares compativeis e possui scaffold Tauri para desktop.
 
 As Fases 2 e 3 foram validadas em fluxo real no dia 2026-05-11, com audio de teste, transcricao Gemini e geracao de ata/tarefas Gemini.

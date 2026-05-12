@@ -7,7 +7,9 @@
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "desktop:dev": "npx @tauri-apps/cli@2.8.4 dev",
+    "desktop:build": "npx @tauri-apps/cli@2.8.4 build"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.59.16",

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title>AtaAI</title>
+  <rect width="512" height="512" rx="96" fill="#0f766e"/>
+  <path fill="#f8fafc" d="M144 112h224c22.1 0 40 17.9 40 40v208c0 22.1-17.9 40-40 40H144c-22.1 0-40-17.9-40-40V152c0-22.1 17.9-40 40-40Z"/>
+  <path fill="#0f766e" d="M164 164h184v28H164v-28Zm0 64h184v28H164v-28Zm0 64h118v28H164v-28Z"/>
+  <path fill="#14b8a6" d="M334 286c23.2 0 42 18.8 42 42s-18.8 42-42 42-42-18.8-42-42 18.8-42 42-42Z"/>
+  <path fill="#f8fafc" d="M326 309h16v38h-16v-38Zm-18 14h52v14h-52v-14Z"/>
+</svg>

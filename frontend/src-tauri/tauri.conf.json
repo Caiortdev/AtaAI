@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AtaAI",
+  "version": "0.1.0",
+  "identifier": "com.ataai.desktop",
+  "build": {
+    "beforeDevCommand": "npm.cmd run dev",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "npm.cmd run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "AtaAI",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 1024,
+        "minHeight": 720,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:8000 http://localhost:8000; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.svg"],
+    "publisher": "AtaAI",
+    "copyright": "Copyright AtaAI",
+    "category": "Business",
+    "shortDescription": "Gerador de atas de reuniao por IA.",
+    "longDescription": "AtaAI transforma reunioes com clientes em atas, transcricoes, decisoes e tarefas priorizadas."
+  }
+}
