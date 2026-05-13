@@ -49,7 +49,7 @@ O usuario consegue:
   - tamanho maximo de arquivo para envio;
   - duracao dos trechos quando o audio precisa ser dividido.
 - Segmentacao automatica de audio quando o arquivo for maior que o limite configurado.
-- Envio do audio em WAV para o Gemini usando `generateContent`.
+- Envio do audio preparado para o Gemini usando o MIME correto do arquivo.
 - Resposta estruturada em JSON com o campo `text`.
 - Pipeline atualizado:
   - preparar audio;
@@ -70,7 +70,7 @@ O usuario consegue:
 ## O que acontece por baixo dos panos
 
 1. O usuario envia uma reuniao.
-2. A Fase 1 prepara um arquivo WAV mono 16kHz.
+2. A Fase 1 prepara um arquivo MP3 mono 16kHz comprimido.
 3. A Fase 2 verifica qual provedor de transcricao esta configurado.
 4. Se o arquivo for pequeno, ele e enviado inteiro para transcricao.
 5. Se o arquivo for grande, ele e dividido em partes menores.
@@ -135,7 +135,7 @@ TRANSCRIPTION_PROVIDER=gemini
 - Teste automatizado com provedor `gemini` sem chave retornando erro claro.
 - Teste real com audio WAV contendo fala.
 - Teste real pelo contrato HTTP do backend: criar reuniao, enviar upload e processar.
-- Preparacao real do audio via FFmpeg para WAV mono 16kHz.
+- Preparacao real do audio via FFmpeg para MP3 mono 16kHz comprimido.
 - Chamada real ao Gemini `gemini-2.5-flash`.
 - Transcricao real salva na analise da reuniao.
 - Registro final com status `completed`.
@@ -164,7 +164,7 @@ Resultado:
 - Etapas registradas:
   - `Arquivo recebido`;
   - `Validando midia com FFprobe`;
-  - `Audio preparado em WAV mono 16k`;
+  - `Audio preparado em MP3 mono 16k`;
   - `Transcricao gerada por gemini/gemini-2.5-flash`;
   - `Ata e tarefas geradas por gemini/gemini-2.5-flash`.
 

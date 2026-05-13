@@ -3,43 +3,43 @@
 @tailwind utilities;
 
 :root {
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f8fafc;
-  --color-bg-tertiary: #eef2ff;
-  --color-surface: #ffffff;
-  --color-border: #e2e8f0;
-  --color-text-primary: #1e1b4b;
-  --color-text-secondary: #64748b;
-  --color-accent: #6366f1;
-  --color-accent-hover: #4f46e5;
-  --color-accent-muted: #e0e7ff;
-  --color-danger: #ef4444;
-  --color-danger-muted: #fef2f2;
-  --color-success: #10b981;
-  --color-success-muted: #ecfdf5;
-  --color-warning: #f59e0b;
-  --color-warning-muted: #fffbeb;
-  --color-shadow: rgba(99, 102, 241, 0.06);
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.7);
+  --glass-highlight: rgba(255, 255, 255, 0.9);
+  --glass-shadow: rgba(0, 0, 0, 0.06);
+
+  --color-surface: rgba(255, 255, 255, 0.72);
+  --color-overlay: rgba(245, 245, 247, 0.85);
+  --color-text-primary: #1d1d1f;
+  --color-text-secondary: #6e6e73;
+  --color-text-tertiary: #aeaeb2;
+  --color-accent: #007aff;
+  --color-accent-hover: #0056cc;
+  --color-danger: #ff3b30;
+  --color-success: #34c759;
+  --color-warning: #ff9500;
+
+  --page-bg: linear-gradient(135deg, #f5f5f7 0%, #e8e8ed 50%, #f2f2f7 100%);
 }
 
 .dark {
-  --color-bg-primary: #0f0d1a;
-  --color-bg-secondary: #1a1625;
-  --color-bg-tertiary: #252036;
-  --color-surface: #1e1a2e;
-  --color-border: #2e2a3e;
-  --color-text-primary: #f1f0f7;
-  --color-text-secondary: #a5a0b8;
-  --color-accent: #818cf8;
-  --color-accent-hover: #6366f1;
-  --color-accent-muted: #312e81;
-  --color-danger: #f87171;
-  --color-danger-muted: #451a1a;
-  --color-success: #34d399;
-  --color-success-muted: #14332a;
-  --color-warning: #fbbf24;
-  --color-warning-muted: #3d2e05;
-  --color-shadow: rgba(0, 0, 0, 0.3);
+  --glass-bg: rgba(44, 44, 46, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.06);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
+
+  --color-surface: rgba(44, 44, 46, 0.65);
+  --color-overlay: rgba(28, 28, 30, 0.85);
+  --color-text-primary: #f5f5f7;
+  --color-text-secondary: #98989d;
+  --color-text-tertiary: #636366;
+  --color-accent: #0a84ff;
+  --color-accent-hover: #409cff;
+  --color-danger: #ff453a;
+  --color-success: #30d158;
+  --color-warning: #ff9f0a;
+
+  --page-bg: linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 50%, #1c1c1e 100%);
 }
 
 * {
@@ -49,78 +49,126 @@
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--color-bg-primary);
+  background: var(--page-bg);
   color: var(--color-text-primary);
-  transition: background-color 0.2s, color 0.2s;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.3s;
 }
 
 @layer components {
-  .input {
-    @apply w-full rounded-md border px-3 py-2 text-sm outline-none transition;
-    border-color: var(--color-border);
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 2px 16px var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  }
+
+  .glass-lg {
+    background: var(--glass-bg);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 32px var(--glass-shadow), inset 0 1px 0 var(--glass-highlight);
+  }
+
+  .glass-subtle {
     background: var(--color-surface);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 1px 8px var(--glass-shadow);
+  }
+
+  .input {
+    @apply w-full rounded-glass-xs px-3 py-2.5 text-sm outline-none transition;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
     color: var(--color-text-primary);
+    box-shadow: inset 0 0.5px 0 var(--glass-highlight);
   }
   .input::placeholder {
-    color: var(--color-text-secondary);
+    color: var(--color-text-tertiary);
   }
   .input:focus {
     border-color: var(--color-accent);
-    box-shadow: 0 0 0 3px var(--color-accent-muted);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15), inset 0 0.5px 0 var(--glass-highlight);
   }
 
   .button-primary {
-    @apply rounded-md px-4 py-2 text-sm font-semibold text-white transition;
+    @apply rounded-glass-xs px-5 py-2.5 text-sm font-medium text-white transition;
     background: var(--color-accent);
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
   }
   .button-primary:hover:not(:disabled) {
     background: var(--color-accent-hover);
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.35);
+    transform: translateY(-0.5px);
+  }
+  .button-primary:active:not(:disabled) {
+    transform: translateY(0);
   }
   .button-primary:disabled {
-    @apply cursor-not-allowed opacity-50;
+    @apply cursor-not-allowed opacity-40;
   }
 
   .button-secondary {
-    @apply rounded-md border px-4 py-2 text-sm font-semibold transition;
-    border-color: var(--color-border);
-    background: var(--color-surface);
+    @apply rounded-glass-xs px-5 py-2.5 text-sm font-medium transition;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
     color: var(--color-text-primary);
+    box-shadow: 0 1px 4px var(--glass-shadow), inset 0 0.5px 0 var(--glass-highlight);
   }
   .button-secondary:hover:not(:disabled) {
-    background: var(--color-bg-tertiary);
+    background: var(--color-surface);
+    transform: translateY(-0.5px);
+    box-shadow: 0 2px 8px var(--glass-shadow), inset 0 0.5px 0 var(--glass-highlight);
+  }
+  .button-secondary:active:not(:disabled) {
+    transform: translateY(0);
   }
   .button-secondary:disabled {
-    @apply cursor-not-allowed opacity-50;
+    @apply cursor-not-allowed opacity-40;
   }
 
   .button-ghost {
-    @apply rounded-md px-4 py-2 text-sm font-semibold transition;
+    @apply rounded-glass-xs px-5 py-2.5 text-sm font-medium transition;
     background: transparent;
     color: var(--color-text-secondary);
   }
   .button-ghost:hover:not(:disabled) {
-    background: var(--color-bg-tertiary);
+    background: var(--glass-bg);
     color: var(--color-text-primary);
   }
 
   .button-danger {
-    @apply rounded-md px-4 py-2 text-sm font-semibold text-white transition;
+    @apply rounded-glass-xs px-5 py-2.5 text-sm font-medium text-white transition;
     background: var(--color-danger);
+    box-shadow: 0 2px 8px rgba(255, 59, 48, 0.25);
   }
   .button-danger:hover:not(:disabled) {
     opacity: 0.9;
+    transform: translateY(-0.5px);
   }
   .button-danger:disabled {
-    @apply cursor-not-allowed opacity-50;
+    @apply cursor-not-allowed opacity-40;
   }
 
   .option {
-    @apply flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition;
-    border-color: var(--color-border);
-    background: var(--color-surface);
+    @apply flex cursor-pointer items-start gap-3 rounded-glass-xs p-3 text-sm transition;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--glass-border);
   }
   .option:hover {
     border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.1);
   }
 
   .option input {

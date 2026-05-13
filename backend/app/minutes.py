@@ -34,6 +34,52 @@ class GeneratedMinutesPayload(BaseModel):
     minutes_markdown: str = Field(min_length=1)
 
 
+OPERATIONAL_MINUTES_INSTRUCTIONS = """
+Voce transforma transcricoes de reunioes com clientes em atas operacionais para repasse ao time tecnico.
+Nao faca resumo corrido de tudo que foi conversado. Extraia somente contexto, problemas, solicitacoes,
+impactos, criterios de aceite, encaminhamentos e pontos a validar.
+
+O campo minutes_markdown deve seguir este padrao:
+
+Ata de reuniao - [tema principal]
+Data da reuniao: [data citada ou Nao informado]
+Cliente: [cliente/pessoa principal]
+Participantes citados: [nomes citados]
+Produto/processo: [produto, modulo, integracao ou processo afetado]
+Objetivo informado: [objetivo da conversa]
+
+Contexto
+[um ou dois paragrafos objetivos explicando o cenario, o que a ferramenta/processo deveria fazer e
+por que os problemas impedem o uso]
+
+Tarefas levantadas
+1. [verbo no infinitivo + objeto da correcao/mudanca]
+Prioridade: [Critica, Alta, Media ou Baixa]
+Solicitacao: [o que foi pedido, sem inventar]
+Impacto: [impacto operacional/comercial citado ou inferido diretamente do contexto]
+Critérios de aceite:
+- [criterio verificavel]
+- [criterio verificavel]
+
+Encaminhamentos
+- [responsavel/acao combinada]
+
+Observacoes
+- [alertas sobre validacao da ata, nomes, prazos, dependencias ou lacunas]
+
+Regras:
+- Nao invente nomes, datas, responsaveis, numeros, prazos, impactos ou criterios.
+- Quando uma informacao nao existir na transcricao, use "Nao informado" ou "A validar".
+- Prioridade Critica: operacao parada, integracao essencial indisponivel, perda grande de produtividade,
+cliente bloqueado ou prazo urgente.
+- Prioridade Alta: afeta fluxo principal, exige correcao na semana, envolve cliente ou dependencia relevante.
+- Prioridade Media: melhoria importante, falha recorrente sem bloqueio total ou ajuste operacional.
+- Cada tarefa precisa ter criterios de aceite concretos e testaveis.
+- Agrupe falas repetidas em uma unica tarefa; nao duplique itens.
+- Use portugues do Brasil e tom profissional.
+""".strip()
+
+
 class MinutesProvider:
     def generate(self, meeting: Meeting, transcription: TranscriptionResult) -> MeetingAnalysis:
         raise NotImplementedError
@@ -45,10 +91,7 @@ class MockMinutesProvider(MinutesProvider):
 
     def generate(self, meeting: Meeting, transcription: TranscriptionResult) -> MeetingAnalysis:
         payload = GeneratedMinutesPayload(
-            executive_summary=(
-                "A reuniao tratou de ajustes solicitados pelo cliente, com foco principal em um "
-                "bloqueio no envio de relatorios e melhorias na visibilidade dos status."
-            ),
+            executive_summary="Foram levantadas solicitacoes de mudanca e problemas operacionais para priorizacao tecnica.",
             topics=[
                 "Fluxo de envio de relatorios",
                 "Acompanhamento de status",
@@ -119,28 +162,40 @@ class MockMinutesProvider(MinutesProvider):
     def _build_minutes(self, meeting: Meeting) -> str:
         client = meeting.client_name or "Cliente nao informado"
         participants = ", ".join(meeting.participants) if meeting.participants else "Nao informado"
-        return f"""# Ata da reuniao: {meeting.title}
+        return f"""Ata de reuniao - Solicitacoes de mudanca
+Data da reuniao: Nao informado
+Cliente: {client}
+Participantes citados: {participants}
+Produto/processo: Nao informado
+Objetivo informado: coletar problemas e mudancas para priorizar correcoes
 
-## Informacoes gerais
-- Cliente: {client}
-- Participantes: {participants}
-- Preset: {meeting.preset}
+Contexto
+A reuniao registrou solicitacoes do cliente e proximos passos para transformar os pontos discutidos em tarefas executaveis. A ata deve ser validada pela equipe antes do envio formal.
 
-## Resumo executivo
-A reuniao registrou solicitacoes do cliente e proximos passos para transformar os pontos discutidos em tarefas executaveis.
+Tarefas levantadas
+1. Corrigir fluxo de envio de relatorios
+Prioridade: Critica
+Solicitacao: Investigar e corrigir o problema no fluxo de envio de relatorios citado pelo cliente.
+Impacto: O cliente indicou bloqueio operacional.
+Critérios de aceite:
+- O fluxo de envio deve voltar a funcionar sem bloqueio operacional.
+- A causa do problema deve ser identificada e registrada.
 
-## Decisoes
-- Priorizar itens que bloqueiam a operacao do cliente.
+2. Validar requisitos com o time interno
+Prioridade: Alta
+Solicitacao: Confirmar escopo tecnico e retornar ao cliente com prazo estimado.
+Impacto: O cliente depende do retorno para acompanhar a resolucao.
+Critérios de aceite:
+- Requisitos validados com o time interno.
+- Prazo estimado comunicado ao cliente.
+
+Encaminhamentos
 - Validar requisitos tecnicos antes de confirmar prazos finais.
+- Confirmar responsaveis por cada tarefa.
 
-## Tarefas
-- [CRITICAL] Corrigir fluxo de envio de relatorios.
-- [HIGH] Validar requisitos com o time interno.
-- [MEDIUM] Melhorar tela de acompanhamento de status.
-
-## Pendencias
-- Confirmar responsaveis.
-- Confirmar prazo tecnico apos analise interna.
+Observacoes
+- Ata gerada a partir de transcricao automatica.
+- Recomenda-se validar nomes proprios e prazos antes de enviar formalmente ao cliente.
 """
 
 
@@ -208,8 +263,7 @@ class OpenAIMinutesProvider(MinutesProvider):
                 {
                     "role": "system",
                     "content": (
-                        "Voce transforma transcricoes de reunioes com clientes em atas "
-                        "objetivas, tarefas acionaveis e prioridades justificadas. "
+                        f"{OPERATIONAL_MINUTES_INSTRUCTIONS}\n\n"
                         "Nao invente informacoes. Quando responsavel, prazo ou timestamp nao "
                         "forem citados, use string vazia. Siga as instrucoes do preset "
                         "informado nos metadados."
@@ -323,8 +377,7 @@ class GeminiMinutesProvider(MinutesProvider):
                     "parts": [
                         {
                             "text": (
-                                "Voce transforma transcricoes de reunioes com clientes em atas "
-                                "objetivas, tarefas acionaveis e prioridades justificadas. "
+                                f"{OPERATIONAL_MINUTES_INSTRUCTIONS}\n\n"
                                 "Nao invente informacoes. Quando responsavel, prazo ou timestamp "
                                 "nao forem citados, use string vazia. Siga as instrucoes do preset "
                                 "informado nos metadados. Retorne somente JSON valido no schema "

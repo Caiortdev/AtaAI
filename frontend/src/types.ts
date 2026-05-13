@@ -1,4 +1,4 @@
-export type MeetingStatus = "draft" | "uploaded" | "queued" | "processing" | "completed" | "failed";
+export type MeetingStatus = "draft" | "uploaded" | "recording" | "queued" | "processing" | "completed" | "failed";
 export type AnalysisMode = "audio_only" | "audio_video";
 export type Priority = "critical" | "high" | "medium" | "low";
 export type MediaKind = "audio" | "video";
@@ -132,3 +132,11 @@ export type MeetingAnalysisUpdate = Pick<
   | "open_questions"
   | "minutes_markdown"
 >;
+
+export type LiveSessionState = "idle" | "recording" | "paused" | "finalizing" | "done";
+
+export type LiveMessage =
+  | { type: "transcript"; text: string; is_final: boolean }
+  | { type: "draft"; markdown: string }
+  | { type: "status"; state: LiveSessionState }
+  | { type: "error"; message: string };

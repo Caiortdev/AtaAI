@@ -26,6 +26,25 @@ from app.domain import (
     UserRegister,
 )
 
+DEFAULT_PRESET_NAME = "Ata operacional com solicitações de mudança"
+DEFAULT_PRESET_DESCRIPTION = (
+    "Modelo padrao para transformar reunioes com clientes em pendencias priorizadas, "
+    "criterios de aceite e encaminhamentos."
+)
+DEFAULT_PRESET_INSTRUCTIONS = (
+    "Gere uma ata operacional em portugues do Brasil, sem narrar toda a conversa. "
+    "Use exatamente esta estrutura no campo minutes_markdown: "
+    "Ata de reuniao - [tema principal]; Data da reuniao; Cliente; Participantes citados; "
+    "Produto/processo; Objetivo informado; Contexto; Tarefas levantadas numeradas; "
+    "Encaminhamentos; Observacoes. Para cada tarefa, inclua Prioridade, Solicitacao, "
+    "Impacto quando houver e Critérios de aceite em bullets. Priorize problemas que "
+    "bloqueiam a operacao do cliente, integracoes paradas, perda de produtividade, "
+    "prazos citados e dependencias de terceiros. Nao invente nomes, datas, produtos, "
+    "responsaveis, impactos ou criterios; quando algo nao estiver claro, escreva "
+    "'Nao informado' ou deixe como ponto a validar. A ata final deve ser objetiva, "
+    "acionavel e pronta para repassar ao time tecnico."
+)
+
 
 class MeetingRepository(Protocol):
     def list(self, owner_id: str | None = None) -> list[Meeting]: ...
@@ -518,18 +537,24 @@ class SQLitePresetRepository:
                 (owner_id,),
             ).fetchone()
             if row is not None:
-                return MeetingPreset.model_validate_json(row["payload"])
+                preset = MeetingPreset.model_validate_json(row["payload"])
+                if (
+                    preset.name != DEFAULT_PRESET_NAME
+                    or preset.description != DEFAULT_PRESET_DESCRIPTION
+                    or preset.instructions != DEFAULT_PRESET_INSTRUCTIONS
+                ):
+                    preset.name = DEFAULT_PRESET_NAME
+                    preset.description = DEFAULT_PRESET_DESCRIPTION
+                    preset.instructions = DEFAULT_PRESET_INSTRUCTIONS
+                    preset.is_default = True
+                    return self._save(preset)
+                return preset
 
         default = MeetingPreset(
             owner_id=owner_id,
-            name="Ata objetiva com tarefas",
-            description="Modelo padrao para reunioes com clientes e demandas acionaveis.",
-            instructions=(
-                "Gere uma ata objetiva em portugues do Brasil. Separe resumo executivo, "
-                "topicos discutidos, decisoes, riscos, duvidas abertas e tarefas. Para cada "
-                "tarefa, defina prioridade de acordo com urgencia, impacto no cliente, bloqueio "
-                "operacional e prazo citado na reuniao. Nao invente responsaveis ou prazos."
-            ),
+            name=DEFAULT_PRESET_NAME,
+            description=DEFAULT_PRESET_DESCRIPTION,
+            instructions=DEFAULT_PRESET_INSTRUCTIONS,
             is_default=True,
         )
         return self._save(default)

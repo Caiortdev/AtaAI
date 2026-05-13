@@ -51,7 +51,8 @@ O usuario consegue:
   - pela pasta local `tools`.
 - Leitura de metadados com FFprobe.
 - Validacao configuravel de duracao maxima da reuniao.
-- Conversao do audio para WAV mono 16kHz usando FFmpeg.
+- Conversao do audio para MP3 mono 16kHz comprimido usando FFmpeg.
+- Remocao do arquivo original apos a preparacao do audio quando FFmpeg/FFprobe estao disponiveis.
 - Registro do audio preparado no modelo da reuniao.
 - Status `failed` quando algo falha.
 - Mensagem clara quando FFmpeg ou FFprobe nao estao disponiveis.
@@ -69,11 +70,11 @@ O usuario consegue:
 1. O usuario envia um arquivo.
 2. O backend confere se o arquivo tem tamanho valido.
 3. O backend verifica a extensao do arquivo.
-4. O backend salva o arquivo em `backend/storage/uploads`.
+4. O backend recebe o upload em blocos e salva o arquivo original temporariamente em `backend/storage/uploads`.
 5. O FFprobe tenta ler duracao, codec e metadados.
-6. O FFmpeg gera um arquivo WAV padronizado.
+6. O FFmpeg gera um arquivo MP3 padronizado e comprimido.
 7. O arquivo preparado fica salvo em `backend/storage/prepared`.
-8. O sistema registra esse audio preparado na reuniao.
+8. O sistema remove o arquivo original e registra esse audio preparado na reuniao.
 9. A fase seguinte usa esse audio para transcricao.
 
 ## Configuracoes importantes
@@ -81,7 +82,7 @@ O usuario consegue:
 Arquivo: `backend/.env`
 
 ```text
-MAX_UPLOAD_BYTES=524288000
+MAX_UPLOAD_BYTES=5368709120
 MAX_MEDIA_DURATION_SECONDS=10800
 FFMPEG_BINARY=ffmpeg
 FFPROBE_BINARY=ffprobe
@@ -174,5 +175,5 @@ Tambem ficaram fora:
 - **FFmpeg**: ferramenta usada para converter audio e video.
 - **FFprobe**: ferramenta usada para ler informacoes tecnicas de audio e video.
 - **Codec**: formato usado internamente para codificar audio ou video.
-- **WAV mono 16kHz**: formato de audio simples, leve e adequado para transcricao.
+- **MP3 mono 16kHz**: formato de audio comprimido e adequado para transcricao de reunioes longas.
 - **Metadados**: informacoes sobre o arquivo, como duracao, codec e tamanho.

@@ -37,8 +37,11 @@ class MeetingProcessor:
         try:
             if meeting.file is None:
                 raise MediaProcessingError("Envie um arquivo antes de processar a reuniao.")
-            meeting.prepared_audio = self.media_service.prepare_audio(meeting.id, meeting.file)
-            meeting.processing_steps.append("Audio preparado em WAV mono 16k")
+            if meeting.prepared_audio is None:
+                meeting.prepared_audio = self.media_service.prepare_audio(meeting.id, meeting.file)
+                meeting.processing_steps.append("Audio preparado em MP3 mono 16k")
+            else:
+                meeting.processing_steps.append("Audio preparado reutilizado")
 
             transcription = self.transcription_provider.transcribe(meeting.id, meeting.prepared_audio)
             meeting.processing_steps.append(

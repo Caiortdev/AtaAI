@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class MeetingStatus(StrEnum):
     draft = "draft"
     uploaded = "uploaded"
+    recording = "recording"
     queued = "queued"
     processing = "processing"
     completed = "completed"
@@ -109,6 +110,14 @@ class PreparedAudioInfo(BaseModel):
     duration_seconds: float | None = None
     sample_rate_hz: int = 16000
     channels: int = 1
+
+
+class LiveSessionState(StrEnum):
+    idle = "idle"
+    recording = "recording"
+    paused = "paused"
+    finalizing = "finalizing"
+    done = "done"
 
 
 class TaskItem(BaseModel):

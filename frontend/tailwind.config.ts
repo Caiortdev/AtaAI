@@ -6,41 +6,39 @@ export default {
   theme: {
     extend: {
       colors: {
-        bg: {
-          primary: "var(--color-bg-primary)",
-          secondary: "var(--color-bg-secondary)",
-          tertiary: "var(--color-bg-tertiary)",
+        glass: {
+          bg: "var(--glass-bg)",
+          border: "var(--glass-border)",
+          highlight: "var(--glass-highlight)",
         },
         surface: "var(--color-surface)",
-        border: "var(--color-border)",
+        overlay: "var(--color-overlay)",
         text: {
           primary: "var(--color-text-primary)",
           secondary: "var(--color-text-secondary)",
+          tertiary: "var(--color-text-tertiary)",
         },
         accent: {
           DEFAULT: "var(--color-accent)",
           hover: "var(--color-accent-hover)",
-          muted: "var(--color-accent-muted)",
         },
-        danger: {
-          DEFAULT: "var(--color-danger)",
-          muted: "var(--color-danger-muted)",
-        },
-        success: {
-          DEFAULT: "var(--color-success)",
-          muted: "var(--color-success-muted)",
-        },
-        warning: {
-          DEFAULT: "var(--color-warning)",
-          muted: "var(--color-warning-muted)",
-        },
+        danger: "var(--color-danger)",
+        success: "var(--color-success)",
+        warning: "var(--color-warning)",
       },
       boxShadow: {
-        panel: "0 1px 3px var(--color-shadow)",
-        elevated: "0 4px 12px var(--color-shadow)",
+        glass: "0 2px 16px var(--glass-shadow), inset 0 1px 0 var(--glass-highlight)",
+        "glass-lg": "0 8px 32px var(--glass-shadow), inset 0 1px 0 var(--glass-highlight)",
+        "glass-sm": "0 1px 8px var(--glass-shadow), inset 0 0.5px 0 var(--glass-highlight)",
+      },
+      backdropBlur: {
+        glass: "20px",
+        "glass-lg": "40px",
       },
       borderRadius: {
-        DEFAULT: "0.5rem",
+        glass: "16px",
+        "glass-sm": "12px",
+        "glass-xs": "8px",
       },
     },
   },

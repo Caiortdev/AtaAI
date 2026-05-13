@@ -18,19 +18,50 @@ export function setAuthToken(token: string | null) {
   accessToken = token;
 }
 
+function formatApiError(detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return String(item.msg);
+        }
+        return String(item);
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return "Erro inesperado.";
+}
+
+async function parseError(response: Response): Promise<string> {
+  const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
+  return formatApiError((error as { detail?: unknown }).detail);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...init?.headers,
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: {
+        ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch (error) {
+    throw new Error(
+      `Nao foi possivel conectar ao backend em ${API_URL}. Verifique se a API esta rodando na porta 8000.`,
+    );
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
-    throw new Error(error.detail ?? "Erro inesperado.");
+    throw new Error(await parseError(response));
   }
 
   if (response.status === 204) {
@@ -101,11 +132,16 @@ export async function createMeeting(payload: MeetingCreate): Promise<Meeting> {
   });
 }
 
-export async function uploadMeetingFile(meetingId: string, file: File): Promise<Meeting> {
+export async function uploadMeetingFile(
+  meetingId: string,
+  file: File,
+  autoProcess = false,
+): Promise<Meeting> {
   const formData = new FormData();
   formData.append("file", file);
 
-  return request<Meeting>(`/api/meetings/${meetingId}/upload`, {
+  const query = autoProcess ? "?auto_process=true" : "";
+  return request<Meeting>(`/api/meetings/${meetingId}/upload${query}`, {
     method: "POST",
     body: formData,
   });
@@ -132,13 +168,25 @@ export async function updateMeetingAnalysis(
   });
 }
 
+export function createLiveWebSocket(meetingId: string): WebSocket {
+  const wsBase = API_URL.replace(/^http/, "ws");
+  const token = accessToken ?? "";
+  return new WebSocket(`${wsBase}/ws/live/${meetingId}?token=${encodeURIComponent(token)}`);
+}
+
 export async function exportMeetingPdf(meetingId: string): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`${API_URL}/api/meetings/${meetingId}/analysis.pdf`, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/api/meetings/${meetingId}/analysis.pdf`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+  } catch (error) {
+    throw new Error(
+      `Nao foi possivel conectar ao backend em ${API_URL}. Verifique se a API esta rodando na porta 8000.`,
+    );
+  }
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
-    throw new Error(error.detail ?? "Erro inesperado.");
+    throw new Error(await parseError(response));
   }
 
   const disposition = response.headers.get("content-disposition") ?? "";
