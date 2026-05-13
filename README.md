@@ -61,6 +61,7 @@ Esta primeira base ja inclui:
 - aviso de consentimento;
 - validacao de formato e tamanho do arquivo;
 - preparacao real de audio via FFmpeg/FFprobe quando os binarios estiverem configurados;
+- conversao do upload para audio MP3 comprimido e remocao do arquivo original quando FFmpeg/FFprobe estao disponiveis;
 - falha amigavel quando FFmpeg/FFprobe nao estao disponiveis;
 - transcricao real plugavel via Gemini quando `GEMINI_API_KEY` estiver configurada;
 - transcricao mock para testes automatizados;
@@ -105,7 +106,7 @@ FFMPEG_BINARY=C:\caminho\para\ffmpeg.exe
 FFPROBE_BINARY=C:\caminho\para\ffprobe.exe
 ```
 
-Sem essas ferramentas, o app aceita uploads validos, mas o processamento fica com status `failed` e mostra uma mensagem orientando a configuracao.
+Sem essas ferramentas, o app aceita uploads validos, mas mantem o arquivo original ate o processamento. O processamento fica com status `failed` e mostra uma mensagem orientando a configuracao.
 
 ## Transcricao
 
