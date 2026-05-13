@@ -19,21 +19,18 @@ export function Tabs({ tabs, defaultTab, className = "" }: TabsProps) {
 
   return (
     <div className={className}>
-      <div className="flex border-b border-border">
+      <div className="flex gap-1 rounded-glass-sm bg-white/30 p-1 backdrop-blur-sm dark:bg-white/5">
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            className={`relative px-4 py-2.5 text-sm font-medium transition ${
+            className={`relative rounded-glass-xs px-4 py-2 text-sm font-medium transition ${
               activeTab === tab.id
-                ? "text-accent"
+                ? "glass text-text-primary shadow-glass-sm"
                 : "text-text-secondary hover:text-text-primary"
             }`}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
-            {activeTab === tab.id && (
-              <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-accent" />
-            )}
           </button>
         ))}
       </div>

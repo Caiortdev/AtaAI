@@ -9,17 +9,17 @@ type BadgeProps = {
 };
 
 const variantStyles: Record<BadgeVariant, string> = {
-  default: "border-border bg-bg-secondary text-text-secondary",
-  accent: "border-accent/30 bg-accent-muted text-accent",
-  success: "border-success/30 bg-success-muted text-success",
-  warning: "border-warning/30 bg-warning-muted text-warning",
-  danger: "border-danger/30 bg-danger-muted text-danger",
+  default: "bg-white/40 dark:bg-white/10 text-text-secondary",
+  accent: "bg-[var(--color-accent)]/12 text-accent",
+  success: "bg-[var(--color-success)]/12 text-success",
+  warning: "bg-[var(--color-warning)]/12 text-warning",
+  danger: "bg-[var(--color-danger)]/12 text-danger",
 };
 
 export function Badge({ variant = "default", children, className = "" }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium ${variantStyles[variant]} ${className}`}
+      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium backdrop-blur-sm ${variantStyles[variant]} ${className}`}
     >
       {children}
     </span>
