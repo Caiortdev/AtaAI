@@ -78,7 +78,23 @@ def get_settings() -> Settings:
 
         settings.encryption_key = generate_encryption_key()
         _persist_encryption_key(settings.encryption_key)
+    else:
+        _validate_encryption_key(settings.encryption_key)
     return settings
+
+
+def _validate_encryption_key(key: str) -> None:
+    from cryptography.fernet import Fernet, InvalidToken
+
+    try:
+        fernet = Fernet(key.encode())
+        fernet.decrypt(fernet.encrypt(b"test"))
+    except (InvalidToken, ValueError, Exception) as exc:
+        raise RuntimeError(
+            "ENCRYPTION_KEY no .env e invalida ou esta corrompida. "
+            "As API keys dos usuarios nao poderao ser descriptografadas. "
+            f"Erro: {exc}"
+        ) from exc
 
 
 def _persist_encryption_key(key: str) -> None:
@@ -87,5 +103,9 @@ def _persist_encryption_key(key: str) -> None:
     try:
         with env_path.open("a", encoding="utf-8") as f:
             f.write(line)
-    except OSError:
-        pass
+    except OSError as exc:
+        raise RuntimeError(
+            f"Nao foi possivel salvar ENCRYPTION_KEY no arquivo {env_path}. "
+            "Sem essa chave persistida, as API keys dos usuarios serao perdidas "
+            f"na proxima reinicializacao. Erro: {exc}"
+        ) from exc

@@ -586,7 +586,7 @@ def validate_coherence(transcript: str, payload: GeneratedMinutesPayload) -> Non
 def build_meeting_analysis(
     meeting: Meeting,
     transcription: TranscriptionResult,
-    minutes_provider: Literal["mock", "openai", "gemini"],
+    minutes_provider: Literal["mock", "openai", "gemini", "anthropic"],
     minutes_model: str,
     payload: GeneratedMinutesPayload,
 ) -> MeetingAnalysis:

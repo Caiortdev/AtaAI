@@ -129,6 +129,20 @@ def get_processor(
     return MeetingProcessor(media_service, transcription_provider, minutes_provider)
 
 
+def _decrypt_user_key(encrypted_value: str, enc_key: str, provider: str) -> str:
+    decrypted = decrypt_key(encrypted_value, enc_key)
+    if not decrypted:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=(
+                f"Nao foi possivel descriptografar sua chave do provedor {provider}. "
+                "A chave de criptografia do servidor pode ter sido alterada. "
+                "Reconfigure sua API key nas configuracoes."
+            ),
+        )
+    return decrypted
+
+
 def build_processor_for_user(
     user_id: str, settings: Settings, media_service: MediaService
 ) -> MeetingProcessor:
@@ -146,16 +160,16 @@ def build_processor_for_user(
         minutes_provider_name = row.get("minutes_provider")
 
         if transcription_provider_name == "gemini" and row.get("gemini_api_key"):
-            transcription_key = decrypt_key(row["gemini_api_key"], enc_key)
+            transcription_key = _decrypt_user_key(row["gemini_api_key"], enc_key, "Gemini")
         elif transcription_provider_name == "openai" and row.get("openai_api_key"):
-            transcription_key = decrypt_key(row["openai_api_key"], enc_key)
+            transcription_key = _decrypt_user_key(row["openai_api_key"], enc_key, "OpenAI")
 
         if minutes_provider_name == "gemini" and row.get("gemini_api_key"):
-            minutes_key = decrypt_key(row["gemini_api_key"], enc_key)
+            minutes_key = _decrypt_user_key(row["gemini_api_key"], enc_key, "Gemini")
         elif minutes_provider_name == "openai" and row.get("openai_api_key"):
-            minutes_key = decrypt_key(row["openai_api_key"], enc_key)
+            minutes_key = _decrypt_user_key(row["openai_api_key"], enc_key, "OpenAI")
         elif minutes_provider_name == "anthropic" and row.get("anthropic_api_key"):
-            minutes_key = decrypt_key(row["anthropic_api_key"], enc_key)
+            minutes_key = _decrypt_user_key(row["anthropic_api_key"], enc_key, "Anthropic")
 
     transcription_prov = build_transcription_provider(
         settings, media_service, transcription_provider_name, transcription_key
@@ -202,17 +216,30 @@ settings = get_settings()
 
 
 class _WebSocketCORSBypass:
-    """ASGI middleware that strips the Origin header from WebSocket upgrade
-    requests so the CORSMiddleware does not reject them with 403.
-    WebSocket connections are already authenticated via token parameter."""
+    """ASGI middleware that validates the Origin header on WebSocket upgrade
+    requests against the allowed origins list. Strips the header only if the
+    origin is allowed, so CORSMiddleware does not reject it with 403.
+    Rejects unknown origins by closing the connection."""
 
     def __init__(self, app):
         self.app = app
+        self._allowed_origins = set(cors_origins(settings))
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "websocket":
-            headers = [(k, v) for k, v in scope.get("headers", []) if k != b"origin"]
-            scope = dict(scope, headers=headers)
+            origin = None
+            for k, v in scope.get("headers", []):
+                if k == b"origin":
+                    origin = v.decode("utf-8", errors="ignore")
+                    break
+
+            if origin is None or origin in self._allowed_origins:
+                headers = [(k, v) for k, v in scope.get("headers", []) if k != b"origin"]
+                scope = dict(scope, headers=headers)
+            else:
+                await send({"type": "websocket.close", "code": 4003})
+                return
+
         await self.app(scope, receive, send)
 
 
@@ -583,10 +610,10 @@ async def upload_meeting_file(
         updated = repository.save(updated)
 
         processor = build_processor_for_user(current_user.id, settings, media_service)
-        _mid, _req, _repo, _proc = updated.id, request, repository, processor
+        _mid, _req, _repo, _proc, _owner = updated.id, request, repository, processor, current_user.id
         queue.enqueue(
             meeting_id=_mid,
-            run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
+            run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc, oid=_owner: run_processing_job(mid, req, repo, proc, oid),
         )
 
     return updated
@@ -629,10 +656,10 @@ def process_meeting(
     queued = repository.save(meeting)
 
     processor = build_processor_for_user(current_user.id, settings, media_service)
-    _mid, _payload, _repo, _proc = meeting.id, payload, repository, processor
+    _mid, _payload, _repo, _proc, _owner = meeting.id, payload, repository, processor, current_user.id
     queue.enqueue(
         meeting_id=_mid,
-        run=lambda mid=_mid, req=_payload, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
+        run=lambda mid=_mid, req=_payload, repo=_repo, proc=_proc, oid=_owner: run_processing_job(mid, req, repo, proc, oid),
     )
     return queued
 
@@ -723,10 +750,10 @@ async def quick_process_meeting(
     meeting = repository.save(meeting)
 
     processor = build_processor_for_user(current_user.id, settings, media_service)
-    _mid, _req, _repo, _proc = meeting.id, request, repository, processor
+    _mid, _req, _repo, _proc, _owner = meeting.id, request, repository, processor, current_user.id
     queue.enqueue(
         meeting_id=_mid,
-        run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
+        run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc, oid=_owner: run_processing_job(mid, req, repo, proc, oid),
     )
 
     return meeting
@@ -800,8 +827,9 @@ def run_processing_job(
     payload: ProcessMeetingRequest,
     repository: MeetingRepository,
     processor: MeetingProcessor,
+    owner_id: str | None = None,
 ) -> None:
-    meeting = repository.get(meeting_id)
+    meeting = repository.get(meeting_id, owner_id=owner_id)
     if meeting is None:
         return
 
@@ -1052,10 +1080,10 @@ async def _finalize_live_recording(
         processor = build_processor_for_user(meeting.owner_id or "", settings, media_service)
         request = ProcessMeetingRequest()
         queue = get_processing_queue()
-        _mid, _req, _repo, _proc = meeting.id, request, repository, processor
+        _mid, _req, _repo, _proc, _owner = meeting.id, request, repository, processor, meeting.owner_id
         queue.enqueue(
             meeting_id=_mid,
-            run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
+            run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc, oid=_owner: run_processing_job(mid, req, repo, proc, oid),
         )
     else:
         meeting.status = MeetingStatus.failed

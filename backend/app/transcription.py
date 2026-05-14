@@ -20,6 +20,8 @@ from app.config import (
 from app.domain import PreparedAudioInfo
 from app.media import MediaProcessingError, MediaService
 
+OPENAI_TRANSCRIPTION_MODEL = "whisper-1"
+
 
 class TranscriptionError(Exception):
     pass
@@ -87,7 +89,7 @@ class OpenAITranscriptionProvider(TranscriptionProvider):
         return TranscriptionResult(
             text="\n\n".join(text for text in texts if text.strip()),
             provider="openai",
-            model=TRANSCRIPTION_MODEL,
+            model=OPENAI_TRANSCRIPTION_MODEL,
             language=TRANSCRIPTION_LANGUAGE,
         )
 
@@ -105,7 +107,7 @@ class OpenAITranscriptionProvider(TranscriptionProvider):
                 )
             }
             data = {
-                "model": TRANSCRIPTION_MODEL,
+                "model": OPENAI_TRANSCRIPTION_MODEL,
                 "response_format": "json",
                 "language": TRANSCRIPTION_LANGUAGE,
                 "prompt": prompt,

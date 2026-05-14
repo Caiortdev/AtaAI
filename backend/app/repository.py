@@ -335,6 +335,15 @@ class SQLiteMeetingRepository:
         column_name: str,
         column_type: str,
     ) -> None:
+        import re as _re
+
+        if not _re.fullmatch(r"[a-z_][a-z0-9_]*", table_name):
+            raise ValueError(f"Nome de tabela invalido: {table_name}")
+        if not _re.fullmatch(r"[a-z_][a-z0-9_]*", column_name):
+            raise ValueError(f"Nome de coluna invalido: {column_name}")
+        if not _re.fullmatch(r"[A-Z]+", column_type):
+            raise ValueError(f"Tipo de coluna invalido: {column_type}")
+
         columns = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
         if column_name in {column["name"] for column in columns}:
             return
@@ -733,7 +742,7 @@ class SQLiteUserSettingsRepository:
                 values = []
                 for key in ("transcription_provider", "minutes_provider",
                             "gemini_api_key", "openai_api_key", "anthropic_api_key"):
-                    if key in data and data[key] is not None:
+                    if key in data:
                         sets.append(f"{key} = ?")
                         values.append(data[key])
                 sets.append("updated_at = ?")

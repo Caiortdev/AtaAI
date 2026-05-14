@@ -121,6 +121,10 @@ export async function listMeetings(): Promise<Meeting[]> {
   return data.items;
 }
 
+export async function getMeeting(meetingId: string): Promise<Meeting> {
+  return request<Meeting>(`/api/meetings/${meetingId}`);
+}
+
 export async function listPresets(): Promise<MeetingPreset[]> {
   const data = await request<{ items: MeetingPreset[] }>("/api/presets");
   return data.items;

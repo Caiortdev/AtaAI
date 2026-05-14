@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { createMeeting, uploadMeetingFile, processMeeting, listMeetings } from "../../api";
+import { createMeeting, uploadMeetingFile, processMeeting, getMeeting } from "../../api";
 import { useWorkspaceStore } from "../../store";
 import type { AnalysisMode } from "../../types";
 import { Icon } from "../ui/Icon";
@@ -37,8 +37,7 @@ export function EstudioView() {
 
     pollRef.current = window.setInterval(async () => {
       try {
-        const meetings = await listMeetings();
-        const meeting = meetings.find((m) => m.id === processingMeetingId);
+        const meeting = await getMeeting(processingMeetingId);
         if (!meeting) return;
 
         if (meeting.status === "completed") {
@@ -167,7 +166,7 @@ export function EstudioView() {
                   <Icon name="cloud-arrow-up" weight="duotone" size={28} />
                 </div>
                 <div style={{ fontWeight: 600, fontSize: 15 }}>Arraste um arquivo ou clique para selecionar</div>
-                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>MP3, WAV, M4A, MP4, MOV — ate 500MB</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 6 }}>MP3, WAV, M4A, MP4, MOV — ate 5 GB</div>
               </>
             )}
           </div>
