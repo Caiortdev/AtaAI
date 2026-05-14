@@ -8,6 +8,7 @@ import { AtasView } from "./components/views/AtasView";
 import { CaptureView } from "./components/views/CaptureView";
 import { EstudioView } from "./components/views/EstudioView";
 import { HomeView } from "./components/views/HomeView";
+import { SettingsView } from "./components/views/SettingsView";
 import { useWorkspaceStore } from "./store";
 import type { User } from "./types";
 
@@ -72,6 +73,7 @@ export default function App() {
       )}
       {activeTab === "estudio" && <EstudioView />}
       {activeTab === "atas" && <AtasView />}
+      {activeTab === "settings" && <SettingsView />}
     </AppLayout>
   );
 }

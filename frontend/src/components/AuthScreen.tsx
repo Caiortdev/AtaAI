@@ -39,10 +39,6 @@ export function AuthScreen({ onSuccess }: AuthScreenProps) {
     }
   }
 
-  function handleDemo() {
-    onSuccess("demo-token", { id: "demo", name: "Usuario Demo", email: "demo@ataai.app" } as User);
-  }
-
   return (
     <>
       <div className="bg-mesh"><div className="blob" /></div>
@@ -107,11 +103,6 @@ export function AuthScreen({ onSuccess }: AuthScreenProps) {
                 <Button className="btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 4 }} icon={mode === "login" ? "sign-in" : "user-plus"} disabled={loading}>
                   {loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
                 </Button>
-
-                <button type="button" onClick={handleDemo} style={{ padding: 8, fontSize: 12.5, color: "var(--text-dim)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                  <Icon name="play-circle" weight="duotone" size={14} />
-                  Explorar como demo
-                </button>
               </div>
             </form>
           </Glass>

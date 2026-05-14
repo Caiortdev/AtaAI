@@ -204,3 +204,31 @@ class HealthResponse(BaseModel):
     media_tools: dict[str, bool] = Field(default_factory=dict)
     transcription: dict[str, str | bool] = Field(default_factory=dict)
     minutes: dict[str, str | bool] = Field(default_factory=dict)
+
+
+VALID_TRANSCRIPTION_PROVIDERS = ("gemini", "openai")
+VALID_MINUTES_PROVIDERS = ("gemini", "openai", "anthropic")
+
+
+class UserSettingsUpdate(BaseModel):
+    transcription_provider: str | None = None
+    minutes_provider: str | None = None
+    gemini_api_key: str | None = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+
+
+class UserSettingsResponse(BaseModel):
+    transcription_provider: str
+    minutes_provider: str
+    gemini_api_key_set: bool = False
+    gemini_api_key_masked: str = ""
+    openai_api_key_set: bool = False
+    openai_api_key_masked: str = ""
+    anthropic_api_key_set: bool = False
+    anthropic_api_key_masked: str = ""
+
+
+class ProvidersResponse(BaseModel):
+    transcription: list[dict[str, str]]
+    minutes: list[dict[str, str]]

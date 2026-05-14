@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { createMeeting, uploadMeetingFile, processMeeting } from "../../api";
+import { createMeeting, uploadMeetingFile, processMeeting, listMeetings } from "../../api";
 import { useWorkspaceStore } from "../../store";
 import type { AnalysisMode } from "../../types";
 import { Icon } from "../ui/Icon";
@@ -24,32 +24,59 @@ export function EstudioView() {
   const [notes, setNotes] = useState("");
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("audio_only");
-  const [phase, setPhase] = useState<"ready" | "processing" | "done">("ready");
+  const [phase, setPhase] = useState<"ready" | "uploading" | "processing" | "done">("ready");
   const [progress, setProgress] = useState(0);
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [processingMeetingId, setProcessingMeetingId] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
 
+  // Poll for real meeting status
   useEffect(() => {
-    if (phase !== "processing") return;
-    const id = setInterval(() => setProgress((p) => {
-      const n = p + Math.random() * 6;
-      if (n >= 100) { clearInterval(id); setPhase("done"); return 100; }
-      return n;
-    }), 280);
-    return () => clearInterval(id);
-  }, [phase]);
+    if (phase !== "processing" || !processingMeetingId) return;
+
+    pollRef.current = window.setInterval(async () => {
+      try {
+        const meetings = await listMeetings();
+        const meeting = meetings.find((m) => m.id === processingMeetingId);
+        if (!meeting) return;
+
+        if (meeting.status === "completed") {
+          setProgress(100);
+          setPhase("done");
+          selectMeeting(processingMeetingId);
+          void queryClient.invalidateQueries({ queryKey: ["meetings"] });
+          if (pollRef.current) window.clearInterval(pollRef.current);
+        } else if (meeting.status === "failed") {
+          setError(meeting.processing_error || "Erro no processamento");
+          setPhase("ready");
+          if (pollRef.current) window.clearInterval(pollRef.current);
+        } else {
+          // Advance progress based on status
+          setProgress((p) => Math.min(p + 2, 90));
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 3000);
+
+    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
+  }, [phase, processingMeetingId, selectMeeting, queryClient]);
 
   async function handleProcess() {
-    if (!file || !title.trim()) return;
+    if (!file || !title.trim() || !consent) return;
     setError(null);
-    setPhase("processing");
+    setPhase("uploading");
+    setProgress(5);
     try {
       const meeting = await createMeeting({ title: title.trim(), client_name: clientName || null, participants: participants.split(",").map((p) => p.trim()).filter(Boolean), notes: notes || null, consent_confirmed: true });
+      setProgress(15);
       await uploadMeetingFile(meeting.id, file);
+      setProgress(25);
       await processMeeting(meeting.id, analysisMode, selectedPreset);
-      selectMeeting(meeting.id);
-      await queryClient.invalidateQueries({ queryKey: ["meetings"] });
-      setPhase("done");
+      setProcessingMeetingId(meeting.id);
+      setPhase("processing");
+      setProgress(30);
     } catch (err: any) {
       setError(err.message || "Erro ao processar");
       setPhase("ready");
@@ -78,7 +105,7 @@ export function EstudioView() {
     );
   }
 
-  if (phase === "processing") {
+  if (phase === "uploading" || phase === "processing") {
     return (
       <div className="page" style={{ maxWidth: 520, margin: "60px auto" }}>
         <Glass strong style={{ padding: 36 }}>

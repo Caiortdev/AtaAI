@@ -640,7 +640,7 @@ class SQLitePresetRepository:
 
 
 def build_meeting_repository(settings: Settings) -> MeetingRepository:
-    backend = settings.database_backend.lower().strip()
+    backend = settings.database_backend
     if backend == "sqlite":
         return SQLiteMeetingRepository(settings.database_path)
     if backend == "json":
@@ -650,11 +650,11 @@ def build_meeting_repository(settings: Settings) -> MeetingRepository:
             "PostgreSQL esta arquitetado como backend futuro, mas ainda nao esta ativo neste MVP. "
             "Use DATABASE_BACKEND=sqlite por enquanto."
         )
-    raise RuntimeError(f"DATABASE_BACKEND desconhecido: {settings.database_backend}.")
+    raise RuntimeError(f"DATABASE_BACKEND desconhecido: {backend}.")
 
 
 def build_auth_repository(settings: Settings) -> AuthRepository:
-    backend = settings.database_backend.lower().strip()
+    backend = settings.database_backend
     if backend == "sqlite":
         return SQLiteAuthRepository(settings.database_path)
     if backend == "postgres":
@@ -666,7 +666,7 @@ def build_auth_repository(settings: Settings) -> AuthRepository:
 
 
 def build_preset_repository(settings: Settings) -> PresetRepository:
-    backend = settings.database_backend.lower().strip()
+    backend = settings.database_backend
     if backend == "sqlite":
         return SQLitePresetRepository(settings.database_path)
     if backend == "postgres":
@@ -675,3 +675,99 @@ def build_preset_repository(settings: Settings) -> PresetRepository:
             "Use DATABASE_BACKEND=sqlite por enquanto."
         )
     raise RuntimeError("Presets personalizados exigem DATABASE_BACKEND=sqlite neste MVP.")
+
+
+class SQLiteUserSettingsRepository:
+    _lock = threading.RLock()
+
+    def __init__(self, db_path: Path) -> None:
+        self.db_path = db_path
+        self._migrate()
+
+    @contextmanager
+    def _connect(self):
+        connection = sqlite3.connect(str(self.db_path), timeout=10)
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode=WAL")
+        try:
+            yield connection
+        finally:
+            connection.close()
+
+    def _migrate(self) -> None:
+        with self._lock, self._connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    user_id TEXT PRIMARY KEY,
+                    transcription_provider TEXT NOT NULL DEFAULT 'gemini',
+                    minutes_provider TEXT NOT NULL DEFAULT 'gemini',
+                    gemini_api_key TEXT,
+                    openai_api_key TEXT,
+                    anthropic_api_key TEXT,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(user_id) REFERENCES users(id)
+                )
+                """
+            )
+            connection.commit()
+
+    def get(self, user_id: str) -> dict | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
+            ).fetchone()
+            if row is None:
+                return None
+            return dict(row)
+
+    def upsert(self, user_id: str, data: dict) -> dict:
+        now = datetime.now(UTC).isoformat()
+        with self._lock, self._connect() as connection:
+            existing = connection.execute(
+                "SELECT user_id FROM user_settings WHERE user_id = ?", (user_id,)
+            ).fetchone()
+
+            if existing:
+                sets = []
+                values = []
+                for key in ("transcription_provider", "minutes_provider",
+                            "gemini_api_key", "openai_api_key", "anthropic_api_key"):
+                    if key in data and data[key] is not None:
+                        sets.append(f"{key} = ?")
+                        values.append(data[key])
+                sets.append("updated_at = ?")
+                values.append(now)
+                values.append(user_id)
+                connection.execute(
+                    f"UPDATE user_settings SET {', '.join(sets)} WHERE user_id = ?",
+                    values,
+                )
+            else:
+                connection.execute(
+                    """
+                    INSERT INTO user_settings
+                        (user_id, transcription_provider, minutes_provider,
+                         gemini_api_key, openai_api_key, anthropic_api_key, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        user_id,
+                        data.get("transcription_provider", "gemini"),
+                        data.get("minutes_provider", "gemini"),
+                        data.get("gemini_api_key"),
+                        data.get("openai_api_key"),
+                        data.get("anthropic_api_key"),
+                        now,
+                    ),
+                )
+            connection.commit()
+            return dict(
+                connection.execute(
+                    "SELECT * FROM user_settings WHERE user_id = ?", (user_id,)
+                ).fetchone()
+            )
+
+
+def build_user_settings_repository(settings: Settings) -> SQLiteUserSettingsRepository:
+    return SQLiteUserSettingsRepository(settings.database_path)

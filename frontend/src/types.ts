@@ -140,3 +140,33 @@ export type LiveMessage =
   | { type: "draft"; markdown: string }
   | { type: "status"; state: LiveSessionState }
   | { type: "error"; message: string };
+
+export type UserSettings = {
+  transcription_provider: string;
+  minutes_provider: string;
+  gemini_api_key_set: boolean;
+  gemini_api_key_masked: string;
+  openai_api_key_set: boolean;
+  openai_api_key_masked: string;
+  anthropic_api_key_set: boolean;
+  anthropic_api_key_masked: string;
+};
+
+export type UserSettingsPayload = {
+  transcription_provider?: string;
+  minutes_provider?: string;
+  gemini_api_key?: string;
+  openai_api_key?: string;
+  anthropic_api_key?: string;
+};
+
+export type ProviderInfo = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+export type ProvidersResponse = {
+  transcription: ProviderInfo[];
+  minutes: ProviderInfo[];
+};

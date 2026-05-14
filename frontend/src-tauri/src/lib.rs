@@ -147,11 +147,18 @@ fn start_sidecar_backend() -> bool {
     };
     let exe_dir = exe_path.parent().unwrap_or(Path::new("."));
 
-    // Look for the sidecar binary next to the main exe
-    let sidecar = exe_dir.join("ataai-backend.exe");
-    if !sidecar.exists() {
-        return false;
-    }
+    // Tauri renames sidecar binaries with the target triple suffix
+    let sidecar = exe_dir.join("ataai-backend-x86_64-pc-windows-msvc.exe");
+    // Fallback to plain name for dev builds
+    let sidecar = if sidecar.exists() {
+        sidecar
+    } else {
+        let plain = exe_dir.join("ataai-backend.exe");
+        if !plain.exists() {
+            return false;
+        }
+        plain
+    };
 
     let log_dir = exe_dir.join("storage");
     let _ = std::fs::create_dir_all(&log_dir);

@@ -8,7 +8,16 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.config import Settings, get_settings
+from app.config import (
+    APP_NAME,
+    AUTH_SESSION_DAYS,
+    LOCAL_EXPORT_ENABLED,
+    MAX_UPLOAD_BYTES,
+    MINUTES_MODEL,
+    TRANSCRIPTION_MODEL,
+    Settings,
+    get_settings,
+)
 from app.domain import (
     AnalysisMode,
     AuthToken,
@@ -24,11 +33,16 @@ from app.domain import (
     MeetingPresetUpdate,
     MeetingStatus,
     ProcessMeetingRequest,
+    ProvidersResponse,
     TrimRequest,
     UploadedFileInfo,
     UserLogin,
     UserPublic,
     UserRegister,
+    UserSettingsResponse,
+    UserSettingsUpdate,
+    VALID_MINUTES_PROVIDERS,
+    VALID_TRANSCRIPTION_PROVIDERS,
 )
 from app.jobs import ProcessingQueue, processing_queue
 from app.live import LiveSession, LiveSessionError
@@ -41,11 +55,14 @@ from app.repository import (
     AuthRepository,
     MeetingRepository,
     PresetRepository,
+    SQLiteUserSettingsRepository,
     build_auth_repository,
     build_meeting_repository,
     build_preset_repository,
+    build_user_settings_repository,
 )
 from app.transcription import build_transcription_provider
+from app.crypto import decrypt_key, encrypt_key, mask_key
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -68,7 +85,7 @@ def cors_origins(settings: Settings) -> list[str]:
 
 def initialize_database(settings: Settings | None = None) -> None:
     settings = settings or get_settings()
-    if settings.database_backend.lower().strip() != "sqlite":
+    if settings.database_backend != "sqlite":
         return
     build_auth_repository(settings)
     build_meeting_repository(settings)
@@ -97,6 +114,12 @@ def get_media_service(settings: Settings = Depends(get_settings)) -> MediaServic
     return MediaService(settings)
 
 
+def get_user_settings_repository(
+    settings: Settings = Depends(get_settings),
+) -> SQLiteUserSettingsRepository:
+    return build_user_settings_repository(settings)
+
+
 def get_processor(
     settings: Settings = Depends(get_settings),
     media_service: MediaService = Depends(get_media_service),
@@ -104,6 +127,43 @@ def get_processor(
     transcription_provider = build_transcription_provider(settings, media_service)
     minutes_provider = build_minutes_provider(settings)
     return MeetingProcessor(media_service, transcription_provider, minutes_provider)
+
+
+def build_processor_for_user(
+    user_id: str, settings: Settings, media_service: MediaService
+) -> MeetingProcessor:
+    repo = build_user_settings_repository(settings)
+    row = repo.get(user_id)
+
+    transcription_provider_name = None
+    transcription_key = None
+    minutes_provider_name = None
+    minutes_key = None
+
+    if row:
+        enc_key = settings.encryption_key
+        transcription_provider_name = row.get("transcription_provider")
+        minutes_provider_name = row.get("minutes_provider")
+
+        if transcription_provider_name == "gemini" and row.get("gemini_api_key"):
+            transcription_key = decrypt_key(row["gemini_api_key"], enc_key)
+        elif transcription_provider_name == "openai" and row.get("openai_api_key"):
+            transcription_key = decrypt_key(row["openai_api_key"], enc_key)
+
+        if minutes_provider_name == "gemini" and row.get("gemini_api_key"):
+            minutes_key = decrypt_key(row["gemini_api_key"], enc_key)
+        elif minutes_provider_name == "openai" and row.get("openai_api_key"):
+            minutes_key = decrypt_key(row["openai_api_key"], enc_key)
+        elif minutes_provider_name == "anthropic" and row.get("anthropic_api_key"):
+            minutes_key = decrypt_key(row["anthropic_api_key"], enc_key)
+
+    transcription_prov = build_transcription_provider(
+        settings, media_service, transcription_provider_name, transcription_key
+    )
+    minutes_prov = build_minutes_provider(
+        settings, minutes_provider_name, minutes_key
+    )
+    return MeetingProcessor(media_service, transcription_prov, minutes_prov)
 
 
 def get_processing_queue() -> ProcessingQueue:
@@ -173,7 +233,7 @@ def health(
 ) -> HealthResponse:
     return HealthResponse(
         status="ok",
-        service=settings.app_name,
+        service=APP_NAME,
         database={
             "backend": settings.database_backend,
             "path": str(settings.database_path) if settings.database_backend == "sqlite" else "",
@@ -182,7 +242,7 @@ def health(
         media_tools=media_service.tools_status(),
         transcription={
             "provider": settings.transcription_provider,
-            "model": settings.transcription_model,
+            "model": TRANSCRIPTION_MODEL,
             "configured": provider_configured(
                 settings.transcription_provider,
                 settings,
@@ -190,7 +250,7 @@ def health(
         },
         minutes={
             "provider": settings.minutes_provider,
-            "model": settings.minutes_model,
+            "model": MINUTES_MODEL,
             "configured": provider_configured(settings.minutes_provider, settings),
         },
     )
@@ -206,10 +266,9 @@ def provider_configured(provider: str, settings: Settings) -> bool:
 
 
 def database_configured(settings: Settings) -> bool:
-    backend = settings.database_backend.lower().strip()
-    if backend == "postgres":
+    if settings.database_backend == "postgres":
         return bool(settings.database_url)
-    return backend in {"sqlite", "json"}
+    return settings.database_backend in {"sqlite", "json"}
 
 
 @app.post("/api/auth/register", response_model=AuthToken, status_code=status.HTTP_201_CREATED)
@@ -222,7 +281,7 @@ def register_user(
         user = auth_repository.create_user(payload)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
-    token = auth_repository.create_session(user.id, settings.auth_session_days)
+    token = auth_repository.create_session(user.id, AUTH_SESSION_DAYS)
     return AuthToken(access_token=token, user=user)
 
 
@@ -238,7 +297,7 @@ def login_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-mail ou senha invalidos.",
         )
-    token = auth_repository.create_session(user.id, settings.auth_session_days)
+    token = auth_repository.create_session(user.id, AUTH_SESSION_DAYS)
     return AuthToken(access_token=token, user=user)
 
 
@@ -255,6 +314,99 @@ def logout_user(
     if credentials is not None:
         auth_repository.revoke_session(credentials.credentials)
     return {"status": "ok"}
+
+
+# --- User Settings ---
+
+
+@app.get("/api/settings", response_model=UserSettingsResponse)
+def get_user_settings(
+    current_user: UserPublic = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    repo: SQLiteUserSettingsRepository = Depends(get_user_settings_repository),
+) -> UserSettingsResponse:
+    row = repo.get(current_user.id)
+    if row is None:
+        return UserSettingsResponse(
+            transcription_provider=settings.transcription_provider,
+            minutes_provider=settings.minutes_provider,
+        )
+
+    enc_key = settings.encryption_key
+
+    def _masked(encrypted_value: str | None) -> tuple[bool, str]:
+        if not encrypted_value:
+            return False, ""
+        decrypted = decrypt_key(encrypted_value, enc_key)
+        if not decrypted:
+            return False, ""
+        return True, mask_key(decrypted)
+
+    gemini_set, gemini_masked = _masked(row.get("gemini_api_key"))
+    openai_set, openai_masked = _masked(row.get("openai_api_key"))
+    anthropic_set, anthropic_masked = _masked(row.get("anthropic_api_key"))
+
+    return UserSettingsResponse(
+        transcription_provider=row["transcription_provider"],
+        minutes_provider=row["minutes_provider"],
+        gemini_api_key_set=gemini_set,
+        gemini_api_key_masked=gemini_masked,
+        openai_api_key_set=openai_set,
+        openai_api_key_masked=openai_masked,
+        anthropic_api_key_set=anthropic_set,
+        anthropic_api_key_masked=anthropic_masked,
+    )
+
+
+@app.put("/api/settings", response_model=UserSettingsResponse)
+def update_user_settings(
+    payload: UserSettingsUpdate,
+    current_user: UserPublic = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+    repo: SQLiteUserSettingsRepository = Depends(get_user_settings_repository),
+) -> UserSettingsResponse:
+    if payload.transcription_provider and payload.transcription_provider not in VALID_TRANSCRIPTION_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Provedor de transcricao invalido. Opcoes: {', '.join(VALID_TRANSCRIPTION_PROVIDERS)}",
+        )
+    if payload.minutes_provider and payload.minutes_provider not in VALID_MINUTES_PROVIDERS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Provedor de ata invalido. Opcoes: {', '.join(VALID_MINUTES_PROVIDERS)}",
+        )
+
+    enc_key = settings.encryption_key
+    data: dict = {}
+
+    if payload.transcription_provider:
+        data["transcription_provider"] = payload.transcription_provider
+    if payload.minutes_provider:
+        data["minutes_provider"] = payload.minutes_provider
+    if payload.gemini_api_key is not None:
+        data["gemini_api_key"] = encrypt_key(payload.gemini_api_key, enc_key) if payload.gemini_api_key else None
+    if payload.openai_api_key is not None:
+        data["openai_api_key"] = encrypt_key(payload.openai_api_key, enc_key) if payload.openai_api_key else None
+    if payload.anthropic_api_key is not None:
+        data["anthropic_api_key"] = encrypt_key(payload.anthropic_api_key, enc_key) if payload.anthropic_api_key else None
+
+    repo.upsert(current_user.id, data)
+    return get_user_settings(current_user, settings, repo)
+
+
+@app.get("/api/settings/providers", response_model=ProvidersResponse)
+def list_providers() -> ProvidersResponse:
+    return ProvidersResponse(
+        transcription=[
+            {"id": "gemini", "name": "Google Gemini", "description": "Gemini 2.5 Flash - transcricao via audio nativo"},
+            {"id": "openai", "name": "OpenAI Whisper", "description": "Whisper - transcricao de audio especializada"},
+        ],
+        minutes=[
+            {"id": "gemini", "name": "Google Gemini", "description": "Gemini 2.5 Flash - geracao de ata estruturada"},
+            {"id": "openai", "name": "OpenAI", "description": "GPT - geracao de ata com JSON schema"},
+            {"id": "anthropic", "name": "Anthropic Claude", "description": "Claude - geracao de ata com alta fidelidade"},
+        ],
+    )
 
 
 @app.get("/api/presets", response_model=MeetingPresetListResponse)
@@ -370,9 +522,9 @@ async def upload_meeting_file(
         with target_path.open("wb") as output:
             while chunk := await file.read(UPLOAD_CHUNK_BYTES):
                 size_bytes += len(chunk)
-                if size_bytes > settings.max_upload_bytes:
+                if size_bytes > MAX_UPLOAD_BYTES:
                     raise MediaValidationError(
-                        f"O arquivo excede o limite de {settings.max_upload_bytes // (1024 * 1024)} MB."
+                        f"O arquivo excede o limite de {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
                     )
                 output.write(chunk)
         media_service.validate_upload_size(size_bytes)
@@ -430,9 +582,7 @@ async def upload_meeting_file(
         updated.processing_steps.append("Processamento enfileirado automaticamente")
         updated = repository.save(updated)
 
-        transcription_provider = build_transcription_provider(settings, media_service)
-        minutes_prov = build_minutes_provider(settings)
-        processor = MeetingProcessor(media_service, transcription_provider, minutes_prov)
+        processor = build_processor_for_user(current_user.id, settings, media_service)
         _mid, _req, _repo, _proc = updated.id, request, repository, processor
         queue.enqueue(
             meeting_id=_mid,
@@ -447,10 +597,11 @@ def process_meeting(
     meeting_id: str,
     payload: ProcessMeetingRequest,
     repository: MeetingRepository = Depends(get_repository),
-    processor: MeetingProcessor = Depends(get_processor),
     queue: ProcessingQueue = Depends(get_processing_queue),
     current_user: UserPublic = Depends(get_current_user),
     preset_repository: PresetRepository = Depends(get_preset_repository),
+    settings: Settings = Depends(get_settings),
+    media_service: MediaService = Depends(get_media_service),
 ) -> Meeting:
     meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
@@ -476,6 +627,8 @@ def process_meeting(
     meeting.processing_error = None
     meeting.processing_steps = ["Arquivo recebido", "Processamento enfileirado"]
     queued = repository.save(meeting)
+
+    processor = build_processor_for_user(current_user.id, settings, media_service)
     _mid, _payload, _repo, _proc = meeting.id, payload, repository, processor
     queue.enqueue(
         meeting_id=_mid,
@@ -517,9 +670,9 @@ async def quick_process_meeting(
         with target_path.open("wb") as output:
             while chunk := await file.read(UPLOAD_CHUNK_BYTES):
                 size_bytes += len(chunk)
-                if size_bytes > settings.max_upload_bytes:
+                if size_bytes > MAX_UPLOAD_BYTES:
                     raise MediaValidationError(
-                        f"O arquivo excede o limite de {settings.max_upload_bytes // (1024 * 1024)} MB."
+                        f"O arquivo excede o limite de {MAX_UPLOAD_BYTES // (1024 * 1024)} MB."
                     )
                 output.write(chunk)
         media_service.validate_upload_size(size_bytes)
@@ -569,9 +722,7 @@ async def quick_process_meeting(
     meeting.processing_steps = ["Arquivo recebido", "Processamento rapido enfileirado"]
     meeting = repository.save(meeting)
 
-    transcription_provider = build_transcription_provider(settings, media_service)
-    minutes_prov = build_minutes_provider(settings)
-    processor = MeetingProcessor(media_service, transcription_provider, minutes_prov)
+    processor = build_processor_for_user(current_user.id, settings, media_service)
     _mid, _req, _repo, _proc = meeting.id, request, repository, processor
     queue.enqueue(
         meeting_id=_mid,
@@ -668,7 +819,7 @@ def run_processing_job(
     if processed.status == MeetingStatus.completed and processed.analysis:
         try:
             settings = get_settings()
-            if settings.local_export_enabled:
+            if LOCAL_EXPORT_ENABLED:
                 storage = LocalStorageService(settings)
                 pdf_bytes = generate_meeting_pdf(processed)
                 storage.save_ata_pdf(processed, pdf_bytes)
@@ -888,7 +1039,7 @@ async def _finalize_live_recording(
         meeting.processing_steps = ["Gravacao ao vivo finalizada", "Processamento enfileirado"]
         repository.save(meeting)
 
-        if settings.local_export_enabled:
+        if LOCAL_EXPORT_ENABLED:
             try:
                 storage = LocalStorageService(settings)
                 audio_path = media_service.prepared_audio_path(meeting.id, prepared_audio)
@@ -898,9 +1049,7 @@ async def _finalize_live_recording(
             except Exception:
                 pass
 
-        transcription_provider = build_transcription_provider(settings, media_service)
-        minutes_provider = build_minutes_provider(settings)
-        processor = MeetingProcessor(media_service, transcription_provider, minutes_provider)
+        processor = build_processor_for_user(meeting.owner_id or "", settings, media_service)
         request = ProcessMeetingRequest()
         queue = get_processing_queue()
         _mid, _req, _repo, _proc = meeting.id, request, repository, processor

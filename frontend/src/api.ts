@@ -7,8 +7,11 @@ import type {
   MeetingCreate,
   MeetingPreset,
   MeetingPresetPayload,
+  ProvidersResponse,
   RegisterPayload,
   User,
+  UserSettings,
+  UserSettingsPayload,
 } from "./types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
@@ -255,4 +258,19 @@ export async function exportMeetingPdf(meetingId: string): Promise<{ blob: Blob;
     blob: await response.blob(),
     filename: filenameMatch?.[1] ?? "ata-reuniao.pdf",
   };
+}
+
+export async function getUserSettings(): Promise<UserSettings> {
+  return request<UserSettings>("/api/settings");
+}
+
+export async function updateUserSettings(payload: UserSettingsPayload): Promise<UserSettings> {
+  return request<UserSettings>("/api/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getProviders(): Promise<ProvidersResponse> {
+  return request<ProvidersResponse>("/api/settings/providers");
 }
