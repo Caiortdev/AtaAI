@@ -1,113 +1,138 @@
-import { type FormEvent, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 
 import { loginUser, registerUser } from "../api";
-import type { AuthPayload, RegisterPayload, User } from "../types";
+import type { User } from "../types";
+import { Icon } from "./ui/Icon";
+import { Glass } from "./ui/Glass";
 import { Button } from "./ui/Button";
+import { Chip } from "./ui/Chip";
 import { Field } from "./ui/Input";
 
 type AuthScreenProps = {
-  onSuccess: (accessToken: string, user: User) => void;
+  onSuccess: (token: string, user: User) => void;
 };
 
 export function AuthScreen({ onSuccess }: AuthScreenProps) {
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [form, setForm] = useState<RegisterPayload>({ name: "", email: "", password: "" });
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loginMutation = useMutation({
-    mutationFn: (payload: AuthPayload) => loginUser(payload),
-    onSuccess: (session) => onSuccess(session.access_token, session.user),
-    onError: (err) => setError(err.message),
-  });
-
-  const registerMutation = useMutation({
-    mutationFn: (payload: RegisterPayload) => registerUser(payload),
-    onSuccess: (session) => onSuccess(session.access_token, session.user),
-    onError: (err) => setError(err.message),
-  });
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
     setError(null);
-    if (mode === "register") {
-      registerMutation.mutate(form);
-      return;
+    try {
+      if (mode === "login") {
+        const session = await loginUser({ email, password });
+        onSuccess(session.access_token, session.user);
+      } else {
+        const session = await registerUser({ email, password, name });
+        onSuccess(session.access_token, session.user);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
-    loginMutation.mutate({ email: form.email, password: form.password });
   }
 
-  const isPending = loginMutation.isPending || registerMutation.isPending;
+  function handleDemo() {
+    onSuccess("demo-token", { id: "demo", name: "Usuario Demo", email: "demo@ataai.app" } as User);
+  }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-bg-primary px-5">
-      <section className="w-full max-w-md rounded-xl border border-border bg-surface p-6 shadow-elevated">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-sm font-bold text-white">
-            A
-          </div>
-          <span className="text-sm font-semibold text-accent">AtaAI</span>
-        </div>
-        <h1 className="mt-4 text-2xl font-semibold text-text-primary">
-          {mode === "login" ? "Entrar na conta" : "Criar conta"}
-        </h1>
-
-        <form className="mt-6 space-y-4" onSubmit={submit}>
-          {mode === "register" && (
-            <Field label="Nome">
-              <input
-                className="input"
-                minLength={2}
-                required
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </Field>
-          )}
-
-          <Field label="E-mail">
-            <input
-              className="input"
-              minLength={5}
-              required
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-            />
-          </Field>
-
-          <Field label="Senha">
-            <input
-              className="input"
-              minLength={8}
-              required
-              type="password"
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-            />
-          </Field>
-
-          {error && (
-            <div className="rounded-md border border-danger/30 bg-danger-muted p-3 text-sm text-danger">
-              {error}
+    <>
+      <div className="bg-mesh"><div className="blob" /></div>
+      <div className="grain" />
+      <div style={{ display: "grid", gridTemplateColumns: "1.05fr 1fr", minHeight: "100vh", position: "relative", zIndex: 2 }}>
+        {/* Left - branding */}
+        <div style={{ padding: "48px 56px", position: "relative", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div style={{ position: "absolute", top: "20%", left: "30%", width: 380, height: 380, borderRadius: "50%", background: "radial-gradient(circle, var(--accent-glow), transparent 70%)", filter: "blur(60px)", opacity: 0.4, pointerEvents: "none" }} />
+          <div className="brand" style={{ position: "relative", zIndex: 1 }}>
+            <div className="brand-mark" style={{ width: 38, height: 38, borderRadius: 11 }}>
+              <Icon name="waveform" weight="fill" size={22} />
             </div>
-          )}
+            <div className="brand-name" style={{ fontSize: 18 }}>AtaAI <span>. beta</span></div>
+          </div>
+          <div style={{ position: "relative", zIndex: 1 }}>
+            <div className="row" style={{ gap: 6, marginBottom: 16 }}>
+              <Chip tone="solid" icon="sparkle">IA generativa</Chip>
+              <Chip icon="shield-check">LGPD</Chip>
+            </div>
+            <h1 style={{ fontSize: 44, fontWeight: 800, letterSpacing: "-0.025em", margin: 0, lineHeight: 1.05, maxWidth: 500 }}>
+              Reunioes que viram <em style={{ fontStyle: "normal", background: "linear-gradient(135deg, var(--accent), oklch(70% 0.22 320))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>atas acionaveis</em>, em minutos.
+            </h1>
+            <p className="dim" style={{ fontSize: 15.5, lineHeight: 1.6, marginTop: 18, maxWidth: 460 }}>
+              Capture, transcreva e estruture reunioes — decisoes, tarefas e prazos extraidos automaticamente pela IA.
+            </p>
+          </div>
+          <div className="row" style={{ gap: 18, position: "relative", zIndex: 1 }}>
+            <StatItem label="atas geradas" value="142" />
+            <StatItem label="horas transcritas" value="71" />
+            <StatItem label="tempo medio" value="4 min" />
+          </div>
+        </div>
 
-          <Button className="w-full" disabled={isPending}>
-            {isPending ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
-          </Button>
-        </form>
+        {/* Right - form */}
+        <div style={{ padding: "48px 56px", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+          <Glass strong style={{ padding: 40, width: "100%", maxWidth: 420, borderRadius: 22 }}>
+            <div style={{ marginBottom: 26 }}>
+              <div style={{ fontWeight: 800, fontSize: 26, letterSpacing: "-0.02em" }}>
+                {mode === "login" ? "Entrar" : "Criar conta"}
+              </div>
+              <div className="dim" style={{ fontSize: 14, marginTop: 6 }}>
+                {mode === "login" ? "Acesse suas reunioes e atas." : "Comece gratis."}
+              </div>
+            </div>
 
-        <button
-          className="mt-4 w-full text-sm font-medium text-accent transition hover:text-accent-hover"
-          onClick={() => {
-            setError(null);
-            setMode(mode === "login" ? "register" : "login");
-          }}
-        >
-          {mode === "login" ? "Criar uma nova conta" : "Entrar com uma conta existente"}
-        </button>
-      </section>
-    </main>
+            <form onSubmit={handleSubmit}>
+              <div className="col" style={{ gap: 14 }}>
+                {mode === "signup" && (
+                  <Field label="Nome completo">
+                    <input className="input" placeholder="Seu nome" value={name} onChange={(e) => setName(e.target.value)} required />
+                  </Field>
+                )}
+                <Field label="E-mail">
+                  <input className="input" type="email" placeholder="seu@email.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                </Field>
+                <Field label="Senha">
+                  <input className="input" type="password" placeholder="********" value={password} onChange={(e) => setPassword(e.target.value)} required />
+                </Field>
+
+                {error && <div style={{ padding: 12, borderRadius: 10, background: "oklch(70% 0.22 25 / 0.15)", color: "var(--recording)", fontSize: 13 }}>{error}</div>}
+
+                <Button className="btn-lg" style={{ width: "100%", justifyContent: "center", marginTop: 4 }} icon={mode === "login" ? "sign-in" : "user-plus"} disabled={loading}>
+                  {loading ? "Aguarde..." : mode === "login" ? "Entrar" : "Criar conta"}
+                </Button>
+
+                <button type="button" onClick={handleDemo} style={{ padding: 8, fontSize: 12.5, color: "var(--text-dim)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Icon name="play-circle" weight="duotone" size={14} />
+                  Explorar como demo
+                </button>
+              </div>
+            </form>
+          </Glass>
+
+          <div className="muted" style={{ fontSize: 13, marginTop: 22, textAlign: "center" }}>
+            {mode === "login" ? "Nao tem conta? " : "Ja tem conta? "}
+            <a onClick={() => setMode(mode === "login" ? "signup" : "login")} style={{ color: "var(--accent)", fontWeight: 700, cursor: "pointer" }}>
+              {mode === "login" ? "Criar uma agora" : "Entrar"}
+            </a>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function StatItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em" }}>{value}</div>
+      <div className="muted" style={{ fontSize: 11.5, marginTop: 2, fontWeight: 500 }}>{label}</div>
+    </div>
   );
 }

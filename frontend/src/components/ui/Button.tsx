@@ -1,23 +1,29 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
-
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+import type { ReactNode, ButtonHTMLAttributes } from "react";
+import { Icon } from "./Icon";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: ButtonVariant;
-  children: ReactNode;
+  variant?: "primary" | "ghost" | "danger";
+  size?: "sm" | "lg";
+  icon?: string;
+  iconRight?: string;
+  children?: ReactNode;
 };
 
-const variantClass: Record<ButtonVariant, string> = {
-  primary: "button-primary",
-  secondary: "button-secondary",
-  ghost: "button-ghost",
-  danger: "button-danger",
-};
-
-export function Button({ variant = "primary", className = "", children, ...props }: ButtonProps) {
+export function Button({
+  variant = "primary",
+  size,
+  icon,
+  iconRight,
+  children,
+  className = "",
+  ...rest
+}: ButtonProps) {
+  const sizeClass = size === "lg" ? "btn-lg" : size === "sm" ? "btn-sm" : "";
   return (
-    <button className={`${variantClass[variant]} ${className}`} {...props}>
+    <button className={`btn btn-${variant} ${sizeClass} ${className}`} {...rest}>
+      {icon && <Icon name={icon} weight="bold" />}
       {children}
+      {iconRight && <Icon name={iconRight} weight="bold" />}
     </button>
   );
 }

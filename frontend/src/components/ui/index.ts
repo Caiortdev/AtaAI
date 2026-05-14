@@ -1,6 +1,12 @@
+export { Icon } from "./Icon";
+export { Glass } from "./Glass";
+export { Card } from "./Card";
 export { Button } from "./Button";
+export { Chip } from "./Chip";
+export { Avatar } from "./Avatar";
 export { Input, Textarea, Field } from "./Input";
-export { Panel } from "./Panel";
-export { Badge } from "./Badge";
 export { Tabs } from "./Tabs";
+export { StatusDot } from "./StatusDot";
+export { Badge } from "./Badge";
+export { Panel } from "./Panel";
 export { Select } from "./Select";

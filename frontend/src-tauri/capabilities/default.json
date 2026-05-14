@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissoes padrao do AtaAI desktop.",
   "windows": ["main"],
-  "permissions": ["opener:default"]
+  "permissions": ["opener:default", "shell:default"]
 }

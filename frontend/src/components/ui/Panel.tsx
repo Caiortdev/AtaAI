@@ -1,27 +1,25 @@
-import type { ReactNode } from "react";
+import type { ReactNode, CSSProperties } from "react";
+import { Glass } from "./Glass";
 
 type PanelProps = {
   title?: string;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;
-  variant?: "glass" | "solid";
+  strong?: boolean;
+  style?: CSSProperties;
 };
 
-export function Panel({ title, actions, children, className = "", variant = "glass" }: PanelProps) {
-  const base = variant === "glass"
-    ? "glass rounded-glass"
-    : "rounded-glass border border-glass-border bg-surface";
-
+export function Panel({ title, actions, children, className = "", strong, style }: PanelProps) {
   return (
-    <section className={`${base} p-5 ${className}`}>
+    <Glass strong={strong} className={className} style={{ padding: 24, ...style }}>
       {(title || actions) && (
-        <div className="mb-4 flex items-center justify-between gap-3">
-          {title && <h2 className="text-base font-semibold text-text-primary">{title}</h2>}
-          {actions && <div className="flex items-center gap-2">{actions}</div>}
+        <div className="row between" style={{ marginBottom: 16 }}>
+          {title && <div style={{ fontWeight: 700, fontSize: 15 }}>{title}</div>}
+          {actions && <div className="row">{actions}</div>}
         </div>
       )}
       {children}
-    </section>
+    </Glass>
   );
 }

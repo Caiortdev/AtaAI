@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { createLiveWebSocket } from "../api";
+import { useWorkspaceStore } from "../store";
 import type { LiveMessage, LiveSessionState } from "../types";
 
 const AUDIO_TIMESLICE_MS = 1000;
@@ -23,6 +24,7 @@ export function useLiveSession(meetingId: string | null): UseLiveSessionReturn {
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const setIsRecording = useWorkspaceStore((s) => s.setIsRecording);
 
   const wsRef = useRef<WebSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -32,6 +34,11 @@ export function useLiveSession(meetingId: string | null): UseLiveSessionReturn {
   const stateRef = useRef<LiveSessionState>("idle");
 
   stateRef.current = state;
+
+  // Sync global recording indicator
+  useEffect(() => {
+    setIsRecording(state === "recording" || state === "paused");
+  }, [state, setIsRecording]);
 
   const cleanup = useCallback(() => {
     if (timerRef.current !== null) {

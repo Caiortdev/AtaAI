@@ -43,11 +43,20 @@ async function parseError(response: Response): Promise<string> {
   return formatApiError((error as { detail?: unknown }).detail);
 }
 
+let onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(callback: () => void) {
+  onUnauthorized = callback;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
   try {
     response = await fetch(`${API_URL}${path}`, {
       ...init,
+      signal: controller.signal,
       headers: {
         ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
@@ -55,9 +64,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     });
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("A requisicao excedeu o tempo limite. Verifique se o backend esta respondendo.");
+    }
     throw new Error(
       `Nao foi possivel conectar ao backend em ${API_URL}. Verifique se a API esta rodando na porta 8000.`,
     );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (response.status === 401 && accessToken && !path.includes("/api/auth/")) {
+    if (onUnauthorized) onUnauthorized();
+    throw new Error("Sessao expirada. Faca login novamente.");
   }
 
   if (!response.ok) {
@@ -172,6 +191,47 @@ export function createLiveWebSocket(meetingId: string): WebSocket {
   const wsBase = API_URL.replace(/^http/, "ws");
   const token = accessToken ?? "";
   return new WebSocket(`${wsBase}/ws/live/${meetingId}?token=${encodeURIComponent(token)}`);
+}
+
+export async function quickProcessMeeting(
+  file: File,
+  presetId?: string,
+  mode: "audio_only" | "audio_video" = "audio_only",
+): Promise<Meeting> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (presetId) formData.append("preset_id", presetId);
+  if (mode !== "audio_only") formData.append("mode", mode);
+
+  return request<Meeting>("/api/meetings/quick", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+export async function trimMeeting(
+  meetingId: string,
+  startSeconds: number,
+  endSeconds: number,
+): Promise<{ duration_seconds: number; size_bytes: number }> {
+  return request<{ duration_seconds: number; size_bytes: number }>(
+    `/api/meetings/${meetingId}/trim`,
+    {
+      method: "POST",
+      body: JSON.stringify({ start_seconds: startSeconds, end_seconds: endSeconds }),
+    },
+  );
+}
+
+export async function getStorageConfig(): Promise<{ enabled: boolean; path: string }> {
+  return request<{ enabled: boolean; path: string }>("/api/storage/config");
+}
+
+export async function updateStorageConfig(path: string): Promise<{ enabled: boolean; path: string }> {
+  return request<{ enabled: boolean; path: string }>("/api/storage/config", {
+    method: "PUT",
+    body: JSON.stringify({ path }),
+  });
 }
 
 export async function exportMeetingPdf(meetingId: string): Promise<{ blob: Blob; filename: string }> {

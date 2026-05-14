@@ -97,6 +97,12 @@ fn wait_for_desktop_ready() {
 }
 
 fn start_local_backend() {
+    // Try bundled sidecar first
+    if start_sidecar_backend() {
+        return;
+    }
+
+    // Fallback: development mode with Python venv
     let Some(backend_dir) = find_backend_dir() else {
         return;
     };
@@ -133,6 +139,41 @@ fn start_local_backend() {
     command.creation_flags(0x08000000);
 
     let _ = command.spawn();
+}
+
+fn start_sidecar_backend() -> bool {
+    let Ok(exe_path) = std::env::current_exe() else {
+        return false;
+    };
+    let exe_dir = exe_path.parent().unwrap_or(Path::new("."));
+
+    // Look for the sidecar binary next to the main exe
+    let sidecar = exe_dir.join("ataai-backend.exe");
+    if !sidecar.exists() {
+        return false;
+    }
+
+    let log_dir = exe_dir.join("storage");
+    let _ = std::fs::create_dir_all(&log_dir);
+    let log_path = log_dir.join("desktop-backend.log");
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .ok();
+    let stderr = stdout.as_ref().and_then(|file| file.try_clone().ok());
+
+    let mut command = Command::new(&sidecar);
+    command
+        .current_dir(exe_dir)
+        .stdin(Stdio::null())
+        .stdout(stdout.map(Stdio::from).unwrap_or_else(Stdio::null))
+        .stderr(stderr.map(Stdio::from).unwrap_or_else(Stdio::null));
+
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+
+    command.spawn().is_ok()
 }
 
 fn find_backend_dir() -> Option<PathBuf> {

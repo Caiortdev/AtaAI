@@ -2,43 +2,26 @@ import type { Config } from "tailwindcss";
 
 export default {
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
-  darkMode: "class",
+  darkMode: ["selector", "[data-theme='dark']"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["'Plus Jakarta Sans'", "system-ui", "sans-serif"],
+        mono: ["'JetBrains Mono'", "monospace"],
+      },
       colors: {
-        glass: {
-          bg: "var(--glass-bg)",
-          border: "var(--glass-border)",
-          highlight: "var(--glass-highlight)",
-        },
-        surface: "var(--color-surface)",
-        overlay: "var(--color-overlay)",
-        text: {
-          primary: "var(--color-text-primary)",
-          secondary: "var(--color-text-secondary)",
-          tertiary: "var(--color-text-tertiary)",
-        },
-        accent: {
-          DEFAULT: "var(--color-accent)",
-          hover: "var(--color-accent-hover)",
-        },
-        danger: "var(--color-danger)",
-        success: "var(--color-success)",
-        warning: "var(--color-warning)",
-      },
-      boxShadow: {
-        glass: "0 2px 16px var(--glass-shadow), inset 0 1px 0 var(--glass-highlight)",
-        "glass-lg": "0 8px 32px var(--glass-shadow), inset 0 1px 0 var(--glass-highlight)",
-        "glass-sm": "0 1px 8px var(--glass-shadow), inset 0 0.5px 0 var(--glass-highlight)",
-      },
-      backdropBlur: {
-        glass: "20px",
-        "glass-lg": "40px",
+        bg: { 0: "var(--bg-0)", 1: "var(--bg-1)" },
+        text: { DEFAULT: "var(--text)", dim: "var(--text-dim)", mute: "var(--text-mute)" },
+        line: { DEFAULT: "var(--line)", strong: "var(--line-strong)" },
+        accent: { DEFAULT: "var(--accent)", soft: "var(--accent-soft)", glow: "var(--accent-glow)" },
+        recording: "var(--recording)",
+        success: "var(--success)",
+        warning: "var(--warning)",
       },
       borderRadius: {
-        glass: "16px",
-        "glass-sm": "12px",
-        "glass-xs": "8px",
+        glass: "var(--radius)",
+        "glass-lg": "var(--radius-lg)",
+        "glass-sm": "var(--radius-sm)",
       },
     },
   },
