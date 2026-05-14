@@ -7,7 +7,15 @@ from uuid import uuid4
 
 import httpx
 
-from app.config import Settings
+from app.config import (
+    GEMINI_BASE_URL,
+    GEMINI_LIVE_MODEL,
+    LIVE_DRAFT_INTERVAL_SECONDS,
+    LIVE_TRANSCRIPTION_ENABLED,
+    MINUTES_MAX_TRANSCRIPT_CHARS,
+    TRANSCRIPTION_LANGUAGE,
+    Settings,
+)
 from app.domain import LiveSessionState
 
 
@@ -16,6 +24,9 @@ class LiveSessionError(Exception):
 
 
 class LiveSession:
+    MAX_RECONNECT_ATTEMPTS = 3
+    RECONNECT_BASE_DELAY = 2.0
+
     def __init__(self, meeting_id: str, settings: Settings) -> None:
         self.meeting_id = meeting_id
         self.settings = settings
@@ -32,6 +43,7 @@ class LiveSession:
         self._on_draft: list = []
         self._on_status: list = []
         self._on_error: list = []
+        self._reconnect_count: int = 0
 
     @property
     def transcript(self) -> str:
@@ -59,7 +71,7 @@ class LiveSession:
                 "GEMINI_API_KEY nao esta configurada. Configure a chave no backend/.env "
                 "para usar gravacao ao vivo."
             )
-        if not self.settings.live_transcription_enabled:
+        if not LIVE_TRANSCRIPTION_ENABLED:
             raise LiveSessionError("Gravacao ao vivo esta desabilitada na configuracao.")
 
         self._chunks_dir.mkdir(parents=True, exist_ok=True)
@@ -119,7 +131,7 @@ class LiveSession:
                 "Execute: pip install websockets"
             )
 
-        model = self.settings.gemini_live_model
+        model = GEMINI_LIVE_MODEL
         api_key = self.settings.gemini_api_key
         ws_url = (
             f"wss://generativelanguage.googleapis.com/ws/"
@@ -140,7 +152,7 @@ class LiveSession:
                 "generationConfig": {
                     "responseModalities": ["TEXT"],
                     "speechConfig": {
-                        "languageCode": self.settings.transcription_language,
+                        "languageCode": TRANSCRIPTION_LANGUAGE,
                     },
                 },
                 "systemInstruction": {
@@ -213,7 +225,10 @@ class LiveSession:
                     await self._maybe_generate_draft()
 
         except Exception as exc:
-            await self._emit_error(f"Erro na conexao com Gemini Live: {exc}")
+            if self.state in (LiveSessionState.finalizing, LiveSessionState.done):
+                return
+            await self._emit_error(f"Conexao com Gemini Live perdida: {exc}")
+            await self._attempt_reconnect()
 
     def _extract_text(self, data: dict) -> str | None:
         server_content = data.get("serverContent")
@@ -232,7 +247,7 @@ class LiveSession:
     async def _maybe_generate_draft(self) -> None:
         now = time.time()
         elapsed = now - self._last_draft_time
-        if elapsed < self.settings.live_draft_interval_seconds:
+        if elapsed < LIVE_DRAFT_INTERVAL_SECONDS:
             return
 
         self._last_draft_time = now
@@ -259,12 +274,12 @@ class LiveSession:
             "gere um rascunho curto da ata ate o momento. Inclua: pontos principais "
             "discutidos, decisoes tomadas e tarefas identificadas ate agora. "
             "Use formato markdown simples. Seja conciso.\n\n"
-            f"Transcricao parcial:\n{transcript[:self.settings.minutes_max_transcript_chars]}"
+            f"Transcricao parcial:\n{transcript[:MINUTES_MAX_TRANSCRIPT_CHARS]}"
         )
 
         url = (
-            f"{self.settings.gemini_base_url}/models/"
-            f"{self.settings.gemini_live_model}:generateContent"
+            f"{GEMINI_BASE_URL}/models/"
+            f"{GEMINI_LIVE_MODEL}:generateContent"
         )
 
         payload = {
@@ -294,6 +309,44 @@ class LiveSession:
         parts = candidates[0].get("content", {}).get("parts", [])
         texts = [p.get("text", "") for p in parts if p.get("text")]
         return "\n".join(texts)
+
+    async def _attempt_reconnect(self) -> None:
+        if self.state in (LiveSessionState.finalizing, LiveSessionState.done):
+            return
+
+        if self._ws_connection is not None:
+            try:
+                await self._ws_connection.close()
+            except Exception:
+                pass
+            self._ws_connection = None
+
+        while self._reconnect_count < self.MAX_RECONNECT_ATTEMPTS:
+            self._reconnect_count += 1
+            delay = self.RECONNECT_BASE_DELAY * (2 ** (self._reconnect_count - 1))
+            await self._emit_error(
+                f"Tentando reconectar ({self._reconnect_count}/{self.MAX_RECONNECT_ATTEMPTS}) "
+                f"em {delay:.0f}s..."
+            )
+            await asyncio.sleep(delay)
+
+            if self.state in (LiveSessionState.finalizing, LiveSessionState.done):
+                return
+
+            try:
+                await self._connect_gemini()
+                self._reconnect_count = 0
+                await self._emit_error("Reconexao bem-sucedida.")
+                return
+            except LiveSessionError as exc:
+                await self._emit_error(f"Falha na reconexao: {exc}")
+
+        await self._emit_error(
+            "Nao foi possivel reconectar ao Gemini Live apos "
+            f"{self.MAX_RECONNECT_ATTEMPTS} tentativas. Sessao encerrada."
+        )
+        self.state = LiveSessionState.done
+        await self._emit_status()
 
     async def _disconnect_gemini(self) -> None:
         if self._receive_task and not self._receive_task.done():

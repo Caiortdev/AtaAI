@@ -15,6 +15,9 @@ class MeetingProcessor:
     contracts or the frontend.
     """
 
+    MAX_WORDS_PER_SECOND = 5.0
+    REPETITION_THRESHOLD = 0.4
+
     def __init__(
         self,
         media_service: MediaService,
@@ -60,6 +63,11 @@ class MeetingProcessor:
                 raise TranscriptionError(
                     "A transcricao retornada esta vazia ou nao contem conteudo significativo. "
                     "Verifique se o audio possui fala clara e audivel."
+                )
+
+            if meeting.prepared_audio and meeting.prepared_audio.duration_seconds:
+                self._validate_transcription_volume(
+                    transcription.text, meeting.prepared_audio.duration_seconds
                 )
 
             meeting.processing_steps.append(
@@ -145,3 +153,29 @@ class MeetingProcessor:
         if word_count < 20:
             return False
         return True
+
+    def _validate_transcription_volume(self, text: str, duration_seconds: float) -> None:
+        word_count = len(text.split())
+        words_per_second = word_count / max(duration_seconds, 1.0)
+
+        if words_per_second > self.MAX_WORDS_PER_SECOND:
+            raise TranscriptionError(
+                f"A transcricao parece conter conteudo inventado: {word_count} palavras "
+                f"para {duration_seconds:.0f}s de audio ({words_per_second:.1f} palavras/s). "
+                "Isso excede o limite de fala humana normal. Verifique a qualidade do audio."
+            )
+
+        if self._has_excessive_repetition(text):
+            raise TranscriptionError(
+                "A transcricao contem trechos excessivamente repetitivos, o que indica "
+                "possivel alucinacao do modelo. Verifique a qualidade do audio."
+            )
+
+    @staticmethod
+    def _has_excessive_repetition(text: str) -> bool:
+        sentences = [s.strip() for s in re.split(r'[.!?\n]', text) if len(s.strip()) > 10]
+        if len(sentences) < 5:
+            return False
+        unique = set(sentences)
+        repetition_ratio = 1.0 - (len(unique) / len(sentences))
+        return repetition_ratio > MeetingProcessor.REPETITION_THRESHOLD

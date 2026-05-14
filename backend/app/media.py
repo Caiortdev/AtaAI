@@ -4,8 +4,16 @@ import subprocess
 from pathlib import Path
 from uuid import uuid4
 
-from app.config import Settings
+from app.config import (
+    MAX_MEDIA_DURATION_SECONDS,
+    MAX_UPLOAD_BYTES,
+    TRANSCRIPTION_CHUNK_SECONDS,
+    TRANSCRIPTION_MAX_FILE_BYTES,
+    Settings,
+)
 from app.domain import MediaKind, PreparedAudioInfo, UploadedFileInfo
+
+LOCAL_MEDIA_TOOLS_ENABLED = True
 
 
 class MediaProcessingError(Exception):
@@ -45,8 +53,8 @@ class MediaService:
     def validate_upload_size(self, size_bytes: int) -> None:
         if size_bytes <= 0:
             raise MediaValidationError("O arquivo enviado esta vazio.")
-        if size_bytes > self.settings.max_upload_bytes:
-            max_mb = self.settings.max_upload_bytes // (1024 * 1024)
+        if size_bytes > MAX_UPLOAD_BYTES:
+            max_mb = MAX_UPLOAD_BYTES // (1024 * 1024)
             raise MediaValidationError(f"O arquivo excede o limite de {max_mb} MB.")
 
     def validate_upload(self, filename: str | None, size_bytes: int) -> tuple[str, MediaKind]:
@@ -78,8 +86,8 @@ class MediaService:
     def enrich_file_info(self, file_info: UploadedFileInfo, source_path: Path) -> UploadedFileInfo:
         probe = self.probe(source_path)
         duration = self._duration_from_probe(probe)
-        if duration and duration > self.settings.max_media_duration_seconds:
-            max_minutes = self.settings.max_media_duration_seconds // 60
+        if duration and duration > MAX_MEDIA_DURATION_SECONDS:
+            max_minutes = MAX_MEDIA_DURATION_SECONDS // 60
             raise MediaProcessingError(f"A reuniao excede o limite de {max_minutes} minutos.")
 
         stream = self._first_stream(probe, file_info.media_kind)
@@ -132,7 +140,7 @@ class MediaService:
 
     def transcription_chunks(self, meeting_id: str, prepared_audio: PreparedAudioInfo) -> list[Path]:
         source_path = self.prepared_audio_path(meeting_id, prepared_audio)
-        if source_path.stat().st_size <= self.settings.transcription_max_file_bytes:
+        if source_path.stat().st_size <= TRANSCRIPTION_MAX_FILE_BYTES:
             return [source_path]
 
         ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
@@ -151,7 +159,7 @@ class MediaService:
             "-f",
             "segment",
             "-segment_time",
-            str(self.settings.transcription_chunk_seconds),
+            str(TRANSCRIPTION_CHUNK_SECONDS),
             "-c",
             "copy",
             str(target_pattern),
@@ -370,7 +378,7 @@ class MediaService:
         if path_binary:
             return path_binary
 
-        if self.settings.local_media_tools_enabled:
+        if LOCAL_MEDIA_TOOLS_ENABLED:
             local_binary = self._local_tool_path(label)
             if local_binary.exists():
                 return str(local_binary)

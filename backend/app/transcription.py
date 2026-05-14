@@ -6,7 +6,17 @@ from pathlib import Path
 
 import httpx
 
-from app.config import Settings
+from app.config import (
+    GEMINI_BASE_URL,
+    OPENAI_BASE_URL,
+    TRANSCRIPTION_FALLBACK_MODELS,
+    TRANSCRIPTION_LANGUAGE,
+    TRANSCRIPTION_MODEL,
+    TRANSCRIPTION_PROMPT,
+    TRANSCRIPTION_RETRY_ATTEMPTS,
+    TRANSCRIPTION_RETRY_DELAY_SECONDS,
+    Settings,
+)
 from app.domain import PreparedAudioInfo
 from app.media import MediaProcessingError, MediaService
 
@@ -52,7 +62,7 @@ class MockTranscriptionProvider(TranscriptionProvider):
             ),
             provider="mock",
             model="mock-transcriber",
-            language=self.settings.transcription_language,
+            language=TRANSCRIPTION_LANGUAGE,
         )
 
 
@@ -77,12 +87,12 @@ class OpenAITranscriptionProvider(TranscriptionProvider):
         return TranscriptionResult(
             text="\n\n".join(text for text in texts if text.strip()),
             provider="openai",
-            model=self.settings.transcription_model,
-            language=self.settings.transcription_language,
+            model=TRANSCRIPTION_MODEL,
+            language=TRANSCRIPTION_LANGUAGE,
         )
 
     def _transcribe_file(self, audio_path: Path, index: int, total: int) -> str:
-        prompt = self.settings.transcription_prompt
+        prompt = TRANSCRIPTION_PROMPT
         if total > 1:
             prompt = f"{prompt}\nEste e o trecho {index} de {total} da mesma reuniao."
 
@@ -95,14 +105,14 @@ class OpenAITranscriptionProvider(TranscriptionProvider):
                 )
             }
             data = {
-                "model": self.settings.transcription_model,
+                "model": TRANSCRIPTION_MODEL,
                 "response_format": "json",
-                "language": self.settings.transcription_language,
+                "language": TRANSCRIPTION_LANGUAGE,
                 "prompt": prompt,
             }
             try:
                 response = httpx.post(
-                    f"{self.settings.openai_base_url}/audio/transcriptions",
+                    f"{OPENAI_BASE_URL}/audio/transcriptions",
                     headers={"Authorization": f"Bearer {self.settings.openai_api_key}"},
                     data=data,
                     files=files,
@@ -136,7 +146,7 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
     def __init__(self, settings: Settings, media_service: MediaService) -> None:
         self.settings = settings
         self.media_service = media_service
-        self._last_successful_model = settings.transcription_model
+        self._last_successful_model = TRANSCRIPTION_MODEL
 
     def transcribe(self, meeting_id: str, prepared_audio: PreparedAudioInfo) -> TranscriptionResult:
         if not self.settings.gemini_api_key:
@@ -159,7 +169,7 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
             text="\n\n".join(text for text in texts if text.strip()),
             provider="gemini",
             model=self._last_successful_model,
-            language=self.settings.transcription_language,
+            language=TRANSCRIPTION_LANGUAGE,
         )
 
     def _transcribe_parallel(self, chunks: list[Path]) -> list[str]:
@@ -189,7 +199,7 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
 
     def _transcribe_file(self, audio_path: Path, index: int, total: int) -> str:
         prompt = (
-            f"{self.settings.transcription_prompt}\n"
+            f"{TRANSCRIPTION_PROMPT}\n"
             "Retorne somente JSON valido no schema solicitado, com o campo text contendo "
             "a transcricao completa e fiel do audio."
         )
@@ -223,8 +233,8 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
 
     def _post_with_retries(self, payload: dict) -> httpx.Response:
         models = self._candidate_models()
-        attempts = max(1, self.settings.transcription_retry_attempts)
-        delay = max(0.0, self.settings.transcription_retry_delay_seconds)
+        attempts = max(1, TRANSCRIPTION_RETRY_ATTEMPTS)
+        delay = max(0.0, TRANSCRIPTION_RETRY_DELAY_SECONDS)
         last_error = "sem detalhe retornado pelo provedor."
 
         for model_index, model in enumerate(models):
@@ -268,8 +278,8 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
 
     def _candidate_models(self) -> list[str]:
         configured = [
-            self.settings.transcription_model,
-            *self.settings.transcription_fallback_models.split(","),
+            TRANSCRIPTION_MODEL,
+            *TRANSCRIPTION_FALLBACK_MODELS,
         ]
         models = [model.strip() for model in configured if model.strip()]
         return list(dict.fromkeys(models))
@@ -280,7 +290,7 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
         time.sleep(delay * (2**attempt))
 
     def _generate_content_url(self, model: str) -> str:
-        return f"{self.settings.gemini_base_url}/models/{model}:generateContent"
+        return f"{GEMINI_BASE_URL}/models/{model}:generateContent"
 
     def _error_detail(self, response: httpx.Response) -> str:
         try:
@@ -296,15 +306,25 @@ class GeminiTranscriptionProvider(TranscriptionProvider):
 def build_transcription_provider(
     settings: Settings,
     media_service: MediaService,
+    provider_override: str | None = None,
+    api_key_override: str | None = None,
 ) -> TranscriptionProvider:
-    provider = settings.transcription_provider.lower().strip()
+    provider = (provider_override or settings.transcription_provider).lower().strip()
+    effective_settings = settings
+    if api_key_override:
+        effective_settings = settings.model_copy()
+        if provider == "gemini":
+            effective_settings.gemini_api_key = api_key_override
+        elif provider == "openai":
+            effective_settings.openai_api_key = api_key_override
+
     if provider == "mock":
-        return MockTranscriptionProvider(settings)
+        return MockTranscriptionProvider(effective_settings)
     if provider == "gemini":
-        return GeminiTranscriptionProvider(settings, media_service)
+        return GeminiTranscriptionProvider(effective_settings, media_service)
     if provider == "openai":
-        return OpenAITranscriptionProvider(settings, media_service)
-    raise TranscriptionError(f"Provedor de transcricao desconhecido: {settings.transcription_provider}.")
+        return OpenAITranscriptionProvider(effective_settings, media_service)
+    raise TranscriptionError(f"Provedor de transcricao desconhecido: {provider}.")
 
 
 def extract_gemini_text(payload: dict) -> str:

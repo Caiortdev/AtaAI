@@ -2,7 +2,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from app.config import BACKEND_DIR, Settings, get_settings
+from app.config import BACKEND_DIR, MAX_UPLOAD_BYTES, Settings, get_settings
 from app.domain import MeetingCreate, PreparedAudioInfo
 from app.main import app, get_processing_queue, initialize_database
 from app.media import MediaService
@@ -115,7 +115,7 @@ def test_default_runtime_paths_are_backend_relative():
 
     assert settings.storage_dir == BACKEND_DIR / "storage"
     assert settings.database_path == BACKEND_DIR / "storage" / "ataai.sqlite3"
-    assert settings.max_upload_bytes == 5 * 1024 * 1024 * 1024
+    assert MAX_UPLOAD_BYTES == 5 * 1024 * 1024 * 1024
 
 
 def test_json_repository_remains_available_as_fallback(tmp_path):

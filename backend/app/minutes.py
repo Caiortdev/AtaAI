@@ -1,14 +1,26 @@
 import base64
 import json
+import time
 from pathlib import Path
 from typing import Literal
 
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from app.config import Settings
+from app.config import (
+    GEMINI_BASE_URL,
+    MINUTES_MAX_TRANSCRIPT_CHARS,
+    MINUTES_MODEL,
+    OPENAI_BASE_URL,
+    Settings,
+)
 from app.domain import Meeting, MeetingAnalysis, Priority, TaskItem
-from app.transcription import TranscriptionResult, extract_gemini_text, strip_json_fences
+from app.transcription import (
+    TRANSIENT_STATUS_CODES,
+    TranscriptionResult,
+    extract_gemini_text,
+    strip_json_fences,
+)
 
 
 class MinutesGenerationError(Exception):
@@ -212,6 +224,10 @@ Observacoes
 
 
 class OpenAIMinutesProvider(MinutesProvider):
+    RETRY_ATTEMPTS = 2
+    RETRY_DELAY_SECONDS = 1.0
+    TEMPERATURE = 0.2
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
@@ -231,23 +247,8 @@ class OpenAIMinutesProvider(MinutesProvider):
         if not transcript:
             raise MinutesGenerationError("A transcricao esta vazia; nao e possivel gerar a ata.")
 
-        transcript = transcript[: self.settings.minutes_max_transcript_chars]
-        try:
-            response = httpx.post(
-                f"{self.settings.openai_base_url}/responses",
-                headers={
-                    "Authorization": f"Bearer {self.settings.openai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=self._request_payload(meeting, transcript),
-                timeout=180,
-            )
-        except httpx.HTTPError as exc:
-            raise MinutesGenerationError(f"Falha de conexao ao gerar ata com OpenAI: {exc}") from exc
-
-        if response.status_code >= 400:
-            detail = self._error_detail(response)
-            raise MinutesGenerationError(f"Falha ao gerar ata com OpenAI: {detail}")
+        transcript = transcript[: MINUTES_MAX_TRANSCRIPT_CHARS]
+        response = self._post_with_retries(meeting, transcript)
 
         output_text = self._extract_output_text(response.json())
         try:
@@ -257,12 +258,52 @@ class OpenAIMinutesProvider(MinutesProvider):
                 "A IA retornou uma estrutura invalida para a ata."
             ) from exc
 
+        validate_coherence(transcription.text, payload)
+
         return build_meeting_analysis(
             meeting=meeting,
             transcription=transcription,
             minutes_provider="openai",
-            minutes_model=self.settings.minutes_model,
+            minutes_model=MINUTES_MODEL,
             payload=payload,
+        )
+
+    def _post_with_retries(self, meeting: Meeting, transcript: str) -> httpx.Response:
+        attempts = self.RETRY_ATTEMPTS
+        delay = self.RETRY_DELAY_SECONDS
+        last_error = "sem detalhe retornado pelo provedor."
+
+        for attempt in range(attempts):
+            try:
+                response = httpx.post(
+                    f"{OPENAI_BASE_URL}/responses",
+                    headers={
+                        "Authorization": f"Bearer {self.settings.openai_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=self._request_payload(meeting, transcript),
+                    timeout=180,
+                )
+            except httpx.HTTPError as exc:
+                last_error = f"Falha de conexao ao gerar ata com OpenAI: {exc}"
+                if attempt < attempts - 1:
+                    time.sleep(delay * (2**attempt))
+                continue
+
+            if response.status_code < 400:
+                return response
+
+            detail = self._error_detail(response)
+            last_error = detail
+            if response.status_code not in TRANSIENT_STATUS_CODES:
+                raise MinutesGenerationError(f"Falha ao gerar ata com OpenAI: {detail}")
+
+            if attempt < attempts - 1:
+                time.sleep(delay * (2**attempt))
+
+        raise MinutesGenerationError(
+            f"Falha temporaria ao gerar ata com OpenAI apos {attempts} tentativas. "
+            f"Ultimo erro: {last_error}"
         )
 
     def _request_payload(self, meeting: Meeting, transcript: str) -> dict:
@@ -275,7 +316,7 @@ class OpenAIMinutesProvider(MinutesProvider):
             "instrucoes_do_preset": meeting.preset_instructions or "",
         }
         return {
-            "model": self.settings.minutes_model,
+            "model": MINUTES_MODEL,
             "input": [
                 {
                     "role": "system",
@@ -296,6 +337,7 @@ class OpenAIMinutesProvider(MinutesProvider):
                     ),
                 },
             ],
+            "temperature": self.TEMPERATURE,
             "text": {
                 "format": {
                     "type": "json_schema",
@@ -330,8 +372,14 @@ class OpenAIMinutesProvider(MinutesProvider):
 
 
 class GeminiMinutesProvider(MinutesProvider):
+    FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.0-flash"]
+    RETRY_ATTEMPTS = 2
+    RETRY_DELAY_SECONDS = 1.0
+    TEMPERATURE = 0.2
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+        self._last_successful_model = MINUTES_MODEL
 
     def generate(
         self,
@@ -349,23 +397,9 @@ class GeminiMinutesProvider(MinutesProvider):
         if not transcript:
             raise MinutesGenerationError("A transcricao esta vazia; nao e possivel gerar a ata.")
 
-        transcript = transcript[: self.settings.minutes_max_transcript_chars]
-        try:
-            response = httpx.post(
-                self._generate_content_url(self.settings.minutes_model),
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": self.settings.gemini_api_key,
-                },
-                json=self._request_payload(meeting, transcript, frames or []),
-                timeout=180,
-            )
-        except httpx.HTTPError as exc:
-            raise MinutesGenerationError(f"Falha de conexao ao gerar ata com Gemini: {exc}") from exc
-
-        if response.status_code >= 400:
-            detail = self._error_detail(response)
-            raise MinutesGenerationError(f"Falha ao gerar ata com Gemini: {detail}")
+        transcript = transcript[: MINUTES_MAX_TRANSCRIPT_CHARS]
+        request_payload = self._request_payload(meeting, transcript, frames or [])
+        response = self._post_with_retries(request_payload)
 
         output_text = extract_gemini_text(response.json())
         try:
@@ -375,13 +409,70 @@ class GeminiMinutesProvider(MinutesProvider):
                 "Gemini retornou uma estrutura invalida para a ata."
             ) from exc
 
+        validate_coherence(transcription.text, payload)
+
         return build_meeting_analysis(
             meeting=meeting,
             transcription=transcription,
             minutes_provider="gemini",
-            minutes_model=self.settings.minutes_model,
+            minutes_model=self._last_successful_model,
             payload=payload,
         )
+
+    def _post_with_retries(self, payload: dict) -> httpx.Response:
+        models = self._candidate_models()
+        attempts = self.RETRY_ATTEMPTS
+        delay = self.RETRY_DELAY_SECONDS
+        last_error = "sem detalhe retornado pelo provedor."
+
+        for model_index, model in enumerate(models):
+            for attempt in range(attempts):
+                try:
+                    response = httpx.post(
+                        self._generate_content_url(model),
+                        headers={
+                            "Content-Type": "application/json",
+                            "x-goog-api-key": self.settings.gemini_api_key,
+                        },
+                        json=payload,
+                        timeout=180,
+                    )
+                except httpx.HTTPError as exc:
+                    last_error = f"Falha de conexao ao gerar ata com Gemini: {exc}"
+                    if attempt < attempts - 1:
+                        self._sleep_before_retry(delay, attempt)
+                    continue
+
+                if response.status_code < 400:
+                    self._last_successful_model = model
+                    return response
+
+                detail = self._error_detail(response)
+                last_error = f"{model}: {detail}"
+                if response.status_code not in TRANSIENT_STATUS_CODES:
+                    raise MinutesGenerationError(f"Falha ao gerar ata com Gemini: {detail}")
+
+                has_more_attempts = attempt < attempts - 1
+                has_more_models = model_index < len(models) - 1
+                if has_more_attempts:
+                    self._sleep_before_retry(delay, attempt)
+                elif has_more_models:
+                    break
+
+        raise MinutesGenerationError(
+            "Falha temporaria ao gerar ata com Gemini apos tentar "
+            f"{', '.join(models)}. Ultimo erro: {last_error}"
+        )
+
+    def _candidate_models(self) -> list[str]:
+        configured = [MINUTES_MODEL, *self.FALLBACK_MODELS]
+        models = [model.strip() for model in configured if model.strip()]
+        return list(dict.fromkeys(models))
+
+    def _sleep_before_retry(self, delay: float, attempt: int) -> None:
+        if delay <= 0:
+            return
+        time.sleep(delay * (2**attempt))
 
     def _request_payload(self, meeting: Meeting, transcript: str, frames: list[Path]) -> dict:
         metadata = {
@@ -438,11 +529,12 @@ class GeminiMinutesProvider(MinutesProvider):
             "generationConfig": {
                 "responseMimeType": "application/json",
                 "responseSchema": GEMINI_MINUTES_JSON_SCHEMA,
+                "temperature": self.TEMPERATURE,
             },
         }
 
     def _generate_content_url(self, model: str) -> str:
-        return f"{self.settings.gemini_base_url}/models/{model}:generateContent"
+        return f"{GEMINI_BASE_URL}/models/{model}:generateContent"
 
     def _error_detail(self, response: httpx.Response) -> str:
         try:
@@ -453,6 +545,42 @@ class GeminiMinutesProvider(MinutesProvider):
         if isinstance(error, dict):
             return str(error.get("message") or error)
         return str(payload)
+
+
+def _extract_keywords(text: str, min_length: int = 4) -> set[str]:
+    words = set()
+    for word in text.lower().split():
+        cleaned = "".join(c for c in word if c.isalnum())
+        if len(cleaned) >= min_length:
+            words.add(cleaned)
+    return words
+
+
+def validate_coherence(transcript: str, payload: GeneratedMinutesPayload) -> None:
+    transcript_keywords = _extract_keywords(transcript)
+    if not transcript_keywords:
+        return
+
+    ata_text = " ".join([
+        payload.executive_summary,
+        " ".join(t.title + " " + t.description for t in payload.tasks),
+        " ".join(payload.topics),
+        " ".join(payload.decisions),
+    ])
+    ata_keywords = _extract_keywords(ata_text)
+    if not ata_keywords:
+        raise MinutesGenerationError(
+            "A ata gerada nao contem conteudo significativo. Tente novamente."
+        )
+
+    overlap = ata_keywords & transcript_keywords
+    ratio = len(overlap) / len(ata_keywords) if ata_keywords else 0.0
+
+    if ratio < 0.15:
+        raise MinutesGenerationError(
+            "A ata gerada parece nao corresponder a transcricao (baixa coerencia). "
+            "Isso pode indicar alucinacao da IA. Tente processar novamente."
+        )
 
 
 def build_meeting_analysis(
@@ -492,15 +620,32 @@ def build_meeting_analysis(
     )
 
 
-def build_minutes_provider(settings: Settings) -> MinutesProvider:
-    provider = settings.minutes_provider.lower().strip()
+def build_minutes_provider(
+    settings: Settings,
+    provider_override: str | None = None,
+    api_key_override: str | None = None,
+) -> MinutesProvider:
+    provider = (provider_override or settings.minutes_provider).lower().strip()
+    effective_settings = settings
+    if api_key_override:
+        effective_settings = settings.model_copy()
+        if provider == "gemini":
+            effective_settings.gemini_api_key = api_key_override
+        elif provider == "openai":
+            effective_settings.openai_api_key = api_key_override
+        elif provider == "anthropic":
+            effective_settings.anthropic_api_key = api_key_override
+
     if provider == "mock":
-        return MockMinutesProvider(settings)
+        return MockMinutesProvider(effective_settings)
     if provider == "gemini":
-        return GeminiMinutesProvider(settings)
+        return GeminiMinutesProvider(effective_settings)
     if provider == "openai":
-        return OpenAIMinutesProvider(settings)
-    raise MinutesGenerationError(f"Provedor de ata desconhecido: {settings.minutes_provider}.")
+        return OpenAIMinutesProvider(effective_settings)
+    if provider == "anthropic":
+        from app.anthropic_provider import AnthropicMinutesProvider
+        return AnthropicMinutesProvider(effective_settings)
+    raise MinutesGenerationError(f"Provedor de ata desconhecido: {provider}.")
 
 
 TASK_SCHEMA = {

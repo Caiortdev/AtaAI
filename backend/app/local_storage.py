@@ -2,7 +2,7 @@
 import shutil
 from pathlib import Path
 
-from app.config import Settings
+from app.config import LOCAL_EXPORT_ENABLED, Settings
 
 
 class LocalStorageService:
@@ -66,7 +66,7 @@ class LocalStorageService:
 
     def get_config(self) -> dict:
         return {
-            "enabled": self.settings.local_export_enabled,
+            "enabled": LOCAL_EXPORT_ENABLED,
             "path": str(self._base),
         }
 
@@ -76,7 +76,7 @@ class LocalStorageService:
         self._base = resolved
         self._persist_config()
         return {
-            "enabled": self.settings.local_export_enabled,
+            "enabled": LOCAL_EXPORT_ENABLED,
             "path": str(self._base),
         }
 

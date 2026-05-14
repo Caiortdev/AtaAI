@@ -7,6 +7,32 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
+APP_NAME = "Gerador de Ata de Reuniao por IA"
+AUTH_SESSION_DAYS = 30
+MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024  # 5 GB
+MAX_MEDIA_DURATION_SECONDS = 3 * 60 * 60  # 3 hours
+TRANSCRIPTION_MODEL = "gemini-2.5-flash"
+TRANSCRIPTION_FALLBACK_MODELS = ["gemini-2.5-flash-lite", "gemini-2.0-flash"]
+TRANSCRIPTION_RETRY_ATTEMPTS = 2
+TRANSCRIPTION_RETRY_DELAY_SECONDS = 1.0
+TRANSCRIPTION_LANGUAGE = "pt"
+TRANSCRIPTION_PROMPT = (
+    "Transcreva em portugues do Brasil. Preserve termos tecnicos, nomes de pessoas, "
+    "nomes de empresas, tarefas, prazos e decisoes mencionadas na reuniao. "
+    "Se o audio nao contiver fala humana audivel (silencio, ruido, musica sem voz), "
+    "retorne o campo text como string vazia. Nao invente conteudo."
+)
+TRANSCRIPTION_MAX_FILE_BYTES = 20 * 1024 * 1024  # 20 MB
+TRANSCRIPTION_CHUNK_SECONDS = 10 * 60  # 10 minutes
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+MINUTES_MODEL = "gemini-2.5-flash"
+MINUTES_MAX_TRANSCRIPT_CHARS = 60000
+LIVE_TRANSCRIPTION_ENABLED = True
+LIVE_DRAFT_INTERVAL_SECONDS = 30
+GEMINI_LIVE_MODEL = "gemini-2.5-flash"
+LOCAL_EXPORT_ENABLED = True
+
 
 def resolve_backend_path(path: Path) -> Path:
     if path.is_absolute():
@@ -15,44 +41,20 @@ def resolve_backend_path(path: Path) -> Path:
 
 
 class Settings(BaseSettings):
-    app_name: str = "Gerador de Ata de Reuniao por IA"
     app_env: str = "development"
     frontend_origin: str = "http://127.0.0.1:5173"
     storage_dir: Path = Path("storage")
     database_backend: str = "sqlite"
     database_path: Path = Path("storage/ataai.sqlite3")
     database_url: str | None = None
-    auth_session_days: int = 30
-    max_upload_bytes: int = 5 * 1024 * 1024 * 1024
-    max_media_duration_seconds: int = 3 * 60 * 60
     ffmpeg_binary: str = "ffmpeg"
     ffprobe_binary: str = "ffprobe"
-    local_media_tools_enabled: bool = True
     transcription_provider: str = "gemini"
-    transcription_model: str = "gemini-2.5-flash"
-    transcription_fallback_models: str = "gemini-2.5-flash-lite,gemini-2.0-flash"
-    transcription_retry_attempts: int = 2
-    transcription_retry_delay_seconds: float = 1.0
-    transcription_language: str = "pt"
-    transcription_prompt: str = (
-        "Transcreva em portugues do Brasil. Preserve termos tecnicos, nomes de pessoas, "
-        "nomes de empresas, tarefas, prazos e decisoes mencionadas na reuniao. "
-        "Se o audio nao contiver fala humana audivel (silencio, ruido, musica sem voz), "
-        "retorne o campo text como string vazia. Nao invente conteudo."
-    )
-    transcription_max_file_bytes: int = 20 * 1024 * 1024
-    transcription_chunk_seconds: int = 10 * 60
-    gemini_api_key: str | None = None
-    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
-    openai_api_key: str | None = None
-    openai_base_url: str = "https://api.openai.com/v1"
     minutes_provider: str = "gemini"
-    minutes_model: str = "gemini-2.5-flash"
-    minutes_max_transcript_chars: int = 60000
-    live_transcription_enabled: bool = True
-    live_draft_interval_seconds: int = 30
-    gemini_live_model: str = "gemini-2.5-flash"
-    local_export_enabled: bool = True
+    gemini_api_key: str | None = None
+    openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    encryption_key: str = ""
     local_export_dir: str = ""
 
     @model_validator(mode="after")
@@ -61,9 +63,29 @@ class Settings(BaseSettings):
         self.database_path = resolve_backend_path(self.database_path)
         return self
 
-    model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=BACKEND_DIR / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    if not settings.encryption_key:
+        from app.crypto import generate_encryption_key
+
+        settings.encryption_key = generate_encryption_key()
+        _persist_encryption_key(settings.encryption_key)
+    return settings
+
+
+def _persist_encryption_key(key: str) -> None:
+    env_path = BACKEND_DIR / ".env"
+    line = f"\nENCRYPTION_KEY={key}\n"
+    try:
+        with env_path.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        pass
