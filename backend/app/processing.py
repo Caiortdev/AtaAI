@@ -51,14 +51,8 @@ class MeetingProcessor:
                 meeting.processing_steps.append("Audio preparado reutilizado")
 
             audio_path = self.media_service.prepared_audio_path(meeting.id, meeting.prepared_audio)
-            if self.media_service.detect_silence(audio_path):
-                raise MediaProcessingError(
-                    "O audio nao contem fala audivel. Verifique se o arquivo possui som "
-                    "ou se o microfone estava ativo durante a gravacao."
-                )
-            meeting.processing_steps.append("Audio validado (contem fala)")
 
-            # Audio quality diagnostics
+            # Audio quality diagnostics (includes speech detection)
             ffmpeg_bin = self.media_service._resolve_binary(
                 self.media_service.settings.ffmpeg_binary, "FFmpeg"
             )
@@ -87,6 +81,13 @@ class MeetingProcessor:
                     f"Qualidade do audio: {diagnostics.quality.value} "
                     f"(SNR: {diagnostics.snr_db}dB, fala: {int(diagnostics.speech_ratio * 100)}%)"
                 )
+            else:
+                if self.media_service.detect_silence(audio_path):
+                    raise MediaProcessingError(
+                        "O audio nao contem fala audivel. Verifique se o arquivo possui som "
+                        "ou se o microfone estava ativo durante a gravacao."
+                    )
+                meeting.processing_steps.append("Audio validado (contem fala)")
 
             transcription = self.transcription_provider.transcribe(meeting.id, meeting.prepared_audio)
 

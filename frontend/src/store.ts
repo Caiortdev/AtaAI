@@ -4,7 +4,7 @@ import { persist } from "zustand/middleware";
 import type { User } from "./types";
 
 type Theme = "light" | "dark" | "system";
-type TabId = "home" | "capture" | "atas" | "estudio" | "settings";
+type TabId = "home" | "capture" | "atas" | "estudio" | "logs" | "settings";
 
 type WorkspaceState = {
   selectedMeetingId: string | null;
@@ -27,7 +27,7 @@ function applyThemeClass(theme: Theme) {
   document.documentElement.setAttribute("data-theme", isDark ? "dark" : "light");
 }
 
-const VALID_TABS: TabId[] = ["home", "capture", "atas", "estudio", "settings"];
+const VALID_TABS: TabId[] = ["home", "capture", "atas", "estudio", "logs", "settings"];
 
 function isValidTab(tab: unknown): tab is TabId {
   return typeof tab === "string" && VALID_TABS.includes(tab as TabId);

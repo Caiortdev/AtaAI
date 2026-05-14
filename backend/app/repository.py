@@ -261,6 +261,7 @@ class SQLiteMeetingRepository:
     def _connect(self):
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode=WAL")
         try:
             yield connection
             connection.commit()
@@ -437,6 +438,7 @@ class SQLiteAuthRepository:
     def _connect(self):
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode=WAL")
         try:
             yield connection
             connection.commit()
@@ -616,6 +618,7 @@ class SQLitePresetRepository:
     def _connect(self):
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA journal_mode=WAL")
         try:
             yield connection
             connection.commit()

@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Icon } from "./ui/Icon";
 import { useWorkspaceStore } from "../store";
 
-type TabId = "home" | "capture" | "atas" | "estudio" | "settings";
+type TabId = "home" | "capture" | "atas" | "estudio" | "logs" | "settings";
 
 type AppLayoutProps = {
   activeTab: TabId;
@@ -17,6 +17,7 @@ const ROUTES: { id: TabId; label: string; icon: string }[] = [
   { id: "capture", label: "Captura", icon: "microphone-stage" },
   { id: "estudio", label: "Estúdio", icon: "sliders" },
   { id: "atas", label: "Atas", icon: "notebook" },
+  { id: "logs", label: "Logs", icon: "list-bullets" },
   { id: "settings", label: "Config", icon: "gear" },
 ];
 

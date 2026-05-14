@@ -199,6 +199,26 @@ class MeetingListResponse(BaseModel):
     items: list[Meeting]
 
 
+class MeetingSummary(BaseModel):
+    id: str
+    owner_id: str | None = None
+    title: str
+    client_name: str | None = None
+    status: MeetingStatus
+    analysis_mode: AnalysisMode | None = None
+    preset: str = ""
+    processing_error: str | None = None
+    processing_steps: list[str] = Field(default_factory=list)
+    audio_quality: str | None = None
+    audio_diagnostics: dict | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class MeetingSummaryListResponse(BaseModel):
+    items: list[MeetingSummary]
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     service: str

@@ -36,3 +36,10 @@ frontend/src-tauri/target/
 frontend/src-tauri/gen/
 android/app/build/
 ios/App/build/
+
+# PyInstaller build artifacts
+backend/build/
+
+# Claude
+.claude
+.claude-plugin

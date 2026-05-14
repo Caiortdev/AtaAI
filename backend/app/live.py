@@ -39,6 +39,7 @@ class LiveSession:
         self._ws_connection: object | None = None
         self._receive_task: asyncio.Task | None = None
         self._draft_task: asyncio.Task | None = None
+        self._http_client: httpx.AsyncClient | None = None
         self._on_transcript: list = []
         self._on_draft: list = []
         self._on_status: list = []
@@ -111,6 +112,9 @@ class LiveSession:
                 await self._draft_task
             except asyncio.CancelledError:
                 pass
+        if self._http_client is not None:
+            await self._http_client.aclose()
+            self._http_client = None
         self.state = LiveSessionState.done
         await self._emit_status()
 
@@ -287,16 +291,17 @@ class LiveSession:
             "generationConfig": {"maxOutputTokens": 1024},
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                url,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": self.settings.gemini_api_key,
-                },
-                json=payload,
-                timeout=30,
-            )
+        if self._http_client is None:
+            self._http_client = httpx.AsyncClient(timeout=30)
+
+        response = await self._http_client.post(
+            url,
+            headers={
+                "Content-Type": "application/json",
+                "x-goog-api-key": self.settings.gemini_api_key,
+            },
+            json=payload,
+        )
 
         if response.status_code >= 400:
             raise LiveSessionError(f"Gemini retornou erro ao gerar rascunho: {response.text[:300]}")

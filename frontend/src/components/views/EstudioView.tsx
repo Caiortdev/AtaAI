@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { createMeeting, uploadMeetingFile, processMeeting, getMeeting } from "../../api";
@@ -29,37 +29,45 @@ export function EstudioView() {
   const [consent, setConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processingMeetingId, setProcessingMeetingId] = useState<string | null>(null);
-  const pollRef = useRef<number | null>(null);
 
-  // Poll for real meeting status
+  // Poll for real meeting status with progressive backoff
   useEffect(() => {
     if (phase !== "processing" || !processingMeetingId) return;
 
-    pollRef.current = window.setInterval(async () => {
+    let delay = 3000;
+    let timeoutId: number | null = null;
+
+    async function poll() {
       try {
-        const meeting = await getMeeting(processingMeetingId);
-        if (!meeting) return;
+        const meeting = await getMeeting(processingMeetingId!);
+        if (!meeting) return schedule();
 
         if (meeting.status === "completed") {
           setProgress(100);
           setPhase("done");
-          selectMeeting(processingMeetingId);
+          selectMeeting(processingMeetingId!);
           void queryClient.invalidateQueries({ queryKey: ["meetings"] });
-          if (pollRef.current) window.clearInterval(pollRef.current);
+          return;
         } else if (meeting.status === "failed") {
           setError(meeting.processing_error || "Erro no processamento");
           setPhase("ready");
-          if (pollRef.current) window.clearInterval(pollRef.current);
+          return;
         } else {
-          // Advance progress based on status
           setProgress((p) => Math.min(p + 2, 90));
+          delay = Math.min(delay + 2000, 15000);
+          schedule();
         }
       } catch {
-        // Ignore polling errors
+        schedule();
       }
-    }, 3000);
+    }
 
-    return () => { if (pollRef.current) window.clearInterval(pollRef.current); };
+    function schedule() {
+      timeoutId = window.setTimeout(poll, delay);
+    }
+
+    schedule();
+    return () => { if (timeoutId) window.clearTimeout(timeoutId); };
   }, [phase, processingMeetingId, selectMeeting, queryClient]);
 
   async function handleProcess() {

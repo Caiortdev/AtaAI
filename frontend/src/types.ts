@@ -110,6 +110,14 @@ export type Meeting = {
   analysis?: MeetingAnalysis | null;
   processing_error?: string | null;
   processing_steps: string[];
+  audio_quality?: string | null;
+  audio_diagnostics?: {
+    snr_db: number;
+    clip_ratio: number;
+    speech_ratio: number;
+    mean_volume_db: number;
+    quality: string;
+  } | null;
   created_at: string;
   updated_at: string;
 };

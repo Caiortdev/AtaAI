@@ -32,6 +32,8 @@ from app.domain import (
     MeetingPresetListResponse,
     MeetingPresetUpdate,
     MeetingStatus,
+    MeetingSummary,
+    MeetingSummaryListResponse,
     ProcessMeetingRequest,
     ProvidersResponse,
     TrimRequest,
@@ -492,6 +494,33 @@ def list_meetings(
     return MeetingListResponse(items=repository.list(owner_id=current_user.id))
 
 
+@app.get("/api/meetings/summary", response_model=MeetingSummaryListResponse)
+def list_meetings_summary(
+    repository: MeetingRepository = Depends(get_repository),
+    current_user: UserPublic = Depends(get_current_user),
+) -> MeetingSummaryListResponse:
+    meetings = repository.list(owner_id=current_user.id)
+    summaries = [
+        MeetingSummary(
+            id=m.id,
+            owner_id=m.owner_id,
+            title=m.title,
+            client_name=m.client_name,
+            status=m.status,
+            analysis_mode=m.analysis_mode,
+            preset=m.preset,
+            processing_error=m.processing_error,
+            processing_steps=m.processing_steps,
+            audio_quality=m.audio_quality,
+            audio_diagnostics=m.audio_diagnostics,
+            created_at=m.created_at,
+            updated_at=m.updated_at,
+        )
+        for m in meetings
+    ]
+    return MeetingSummaryListResponse(items=summaries)
+
+
 @app.post("/api/meetings", response_model=Meeting, status_code=status.HTTP_201_CREATED)
 def create_meeting(
     payload: MeetingCreate,
@@ -582,7 +611,9 @@ async def upload_meeting_file(
     prepared_audio = None
     if media_tools["ffmpeg"] and media_tools["ffprobe"]:
         try:
-            prepared_audio = media_service.prepare_audio(meeting_id, file_info)
+            prepared_audio = await asyncio.to_thread(
+                media_service.prepare_audio, meeting_id, file_info
+            )
         except MediaProcessingError as exc:
             target_path.unlink(missing_ok=True)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -720,7 +751,9 @@ async def quick_process_meeting(
     media_tools = media_service.tools_status()
     if media_tools["ffmpeg"] and media_tools["ffprobe"]:
         try:
-            prepared_audio = media_service.prepare_audio(meeting.id, file_info)
+            prepared_audio = await asyncio.to_thread(
+                media_service.prepare_audio, meeting.id, file_info
+            )
         except MediaProcessingError as exc:
             target_path.unlink(missing_ok=True)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

@@ -121,6 +121,11 @@ export async function listMeetings(): Promise<Meeting[]> {
   return data.items;
 }
 
+export async function listMeetingsSummary(): Promise<Meeting[]> {
+  const data = await request<{ items: Meeting[] }>("/api/meetings/summary");
+  return data.items;
+}
+
 export async function getMeeting(meetingId: string): Promise<Meeting> {
   return request<Meeting>(`/api/meetings/${meetingId}`);
 }
@@ -167,10 +172,38 @@ export async function uploadMeetingFile(
   formData.append("file", file);
 
   const query = autoProcess ? "?auto_process=true" : "";
-  return request<Meeting>(`/api/meetings/${meetingId}/upload${query}`, {
-    method: "POST",
-    body: formData,
-  });
+  const timeoutMs = Math.max(300000, Math.ceil(file.size / (1024 * 1024)) * 1000);
+  let response: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    response = await fetch(`${API_URL}/api/meetings/${meetingId}/upload${query}`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("O upload excedeu o tempo limite. Verifique sua conexao.");
+    }
+    throw new Error(
+      `Nao foi possivel conectar ao backend em ${API_URL}. Verifique se a API esta rodando na porta 8000.`,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (response.status === 401 && accessToken) {
+    if (onUnauthorized) onUnauthorized();
+    throw new Error("Sessao expirada. Faca login novamente.");
+  }
+
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+
+  return response.json() as Promise<Meeting>;
 }
 
 export async function processMeeting(
