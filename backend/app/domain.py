@@ -177,6 +177,8 @@ class Meeting(BaseModel):
     analysis: MeetingAnalysis | None = None
     processing_error: str | None = None
     processing_steps: list[str] = Field(default_factory=list)
+    audio_quality: str | None = None
+    audio_diagnostics: dict | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

@@ -1,3 +1,4 @@
+from app.audio_diagnostics import AudioQuality, assess_audio_quality
 from app.domain import AnalysisMode, Meeting, MeetingStatus, ProcessMeetingRequest
 from app.media import MediaProcessingError, MediaService
 from app.minutes import MinutesGenerationError, MinutesProvider
@@ -56,6 +57,36 @@ class MeetingProcessor:
                     "ou se o microfone estava ativo durante a gravacao."
                 )
             meeting.processing_steps.append("Audio validado (contem fala)")
+
+            # Audio quality diagnostics
+            ffmpeg_bin = self.media_service._resolve_binary(
+                self.media_service.settings.ffmpeg_binary, "FFmpeg"
+            )
+            if ffmpeg_bin:
+                diagnostics = assess_audio_quality(audio_path, ffmpeg_bin)
+                meeting.audio_quality = diagnostics.quality.value
+                meeting.audio_diagnostics = {
+                    "snr_db": diagnostics.snr_db,
+                    "clip_ratio": diagnostics.clip_ratio,
+                    "speech_ratio": diagnostics.speech_ratio,
+                    "mean_volume_db": diagnostics.mean_volume_db,
+                    "quality": diagnostics.quality.value,
+                }
+
+                if diagnostics.quality == AudioQuality.unusable:
+                    raise MediaProcessingError(
+                        "Qualidade do audio insuficiente para transcricao. "
+                        + " ".join(diagnostics.warnings)
+                    )
+
+                if diagnostics.warnings:
+                    for warning in diagnostics.warnings:
+                        meeting.processing_steps.append(f"Aviso: {warning}")
+
+                meeting.processing_steps.append(
+                    f"Qualidade do audio: {diagnostics.quality.value} "
+                    f"(SNR: {diagnostics.snr_db}dB, fala: {int(diagnostics.speech_ratio * 100)}%)"
+                )
 
             transcription = self.transcription_provider.transcribe(meeting.id, meeting.prepared_audio)
 
