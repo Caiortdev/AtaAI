@@ -1,7 +1,17 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+
+
+def resolve_backend_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return BACKEND_DIR / path
 
 
 class Settings(BaseSettings):
@@ -13,19 +23,24 @@ class Settings(BaseSettings):
     database_path: Path = Path("storage/ataai.sqlite3")
     database_url: str | None = None
     auth_session_days: int = 30
-    max_upload_bytes: int = 500 * 1024 * 1024
+    max_upload_bytes: int = 5 * 1024 * 1024 * 1024
     max_media_duration_seconds: int = 3 * 60 * 60
     ffmpeg_binary: str = "ffmpeg"
     ffprobe_binary: str = "ffprobe"
     local_media_tools_enabled: bool = True
     transcription_provider: str = "gemini"
     transcription_model: str = "gemini-2.5-flash"
+    transcription_fallback_models: str = "gemini-2.5-flash-lite,gemini-2.0-flash"
+    transcription_retry_attempts: int = 2
+    transcription_retry_delay_seconds: float = 1.0
     transcription_language: str = "pt"
     transcription_prompt: str = (
         "Transcreva em portugues do Brasil. Preserve termos tecnicos, nomes de pessoas, "
-        "nomes de empresas, tarefas, prazos e decisoes mencionadas na reuniao."
+        "nomes de empresas, tarefas, prazos e decisoes mencionadas na reuniao. "
+        "Se o audio nao contiver fala humana audivel (silencio, ruido, musica sem voz), "
+        "retorne o campo text como string vazia. Nao invente conteudo."
     )
-    transcription_max_file_bytes: int = 18 * 1024 * 1024
+    transcription_max_file_bytes: int = 20 * 1024 * 1024
     transcription_chunk_seconds: int = 10 * 60
     gemini_api_key: str | None = None
     gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta"
@@ -34,8 +49,19 @@ class Settings(BaseSettings):
     minutes_provider: str = "gemini"
     minutes_model: str = "gemini-2.5-flash"
     minutes_max_transcript_chars: int = 60000
+    live_transcription_enabled: bool = True
+    live_draft_interval_seconds: int = 30
+    gemini_live_model: str = "gemini-2.5-flash"
+    local_export_enabled: bool = True
+    local_export_dir: str = ""
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    @model_validator(mode="after")
+    def resolve_runtime_paths(self) -> "Settings":
+        self.storage_dir = resolve_backend_path(self.storage_dir)
+        self.database_path = resolve_backend_path(self.database_path)
+        return self
+
+    model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", env_file_encoding="utf-8")
 
 
 @lru_cache

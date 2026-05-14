@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 class MeetingStatus(StrEnum):
     draft = "draft"
     uploaded = "uploaded"
+    recording = "recording"
     queued = "queued"
     processing = "processing"
     completed = "completed"
@@ -111,6 +112,14 @@ class PreparedAudioInfo(BaseModel):
     channels: int = 1
 
 
+class LiveSessionState(StrEnum):
+    idle = "idle"
+    recording = "recording"
+    paused = "paused"
+    finalizing = "finalizing"
+    done = "done"
+
+
 class TaskItem(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     title: str
@@ -176,6 +185,12 @@ class ProcessMeetingRequest(BaseModel):
     mode: AnalysisMode = AnalysisMode.audio_only
     preset: str = "ata_objetiva_com_tarefas"
     preset_id: str | None = None
+    auto_metadata: bool = False
+
+
+class TrimRequest(BaseModel):
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
 
 
 class MeetingListResponse(BaseModel):

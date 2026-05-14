@@ -28,6 +28,7 @@ vite.config.d.ts
 
 # Runtime storage
 backend/storage/
+storage/
 
 # Tauri / Capacitor future outputs
 src-tauri/target/

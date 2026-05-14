@@ -1,3 +1,4 @@
+import logging
 import queue
 import threading
 from collections.abc import Callable
@@ -5,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import uuid4
 
+
+logger = logging.getLogger(__name__)
 
 JobCallable = Callable[[], None]
 
@@ -42,9 +45,11 @@ class ProcessingQueue:
             try:
                 job.run()
             except Exception:
-                # The job wrapper should handle domain errors. This guard keeps the worker alive
-                # if an unexpected exception still escapes.
-                pass
+                logger.exception(
+                    "Unexpected error in processing job %s (meeting %s)",
+                    job.id,
+                    job.meeting_id,
+                )
             finally:
                 self._jobs.task_done()
 

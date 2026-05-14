@@ -1,10 +1,13 @@
+import json
+
 from fastapi.testclient import TestClient
 
-from app.config import Settings, get_settings
+from app.config import BACKEND_DIR, Settings, get_settings
 from app.domain import MeetingCreate, PreparedAudioInfo
-from app.main import app, get_processing_queue
+from app.main import app, get_processing_queue, initialize_database
 from app.media import MediaService
 from app.repository import JsonMeetingRepository, SQLiteMeetingRepository, build_meeting_repository
+from app.transcription import GeminiTranscriptionProvider, parse_transcription_output
 
 
 class FakeMediaService(MediaService):
@@ -107,6 +110,14 @@ def test_uses_sqlite_repository_by_default(tmp_path):
     assert isinstance(repository, SQLiteMeetingRepository)
 
 
+def test_default_runtime_paths_are_backend_relative():
+    settings = Settings(gemini_api_key=None, openai_api_key=None)
+
+    assert settings.storage_dir == BACKEND_DIR / "storage"
+    assert settings.database_path == BACKEND_DIR / "storage" / "ataai.sqlite3"
+    assert settings.max_upload_bytes == 5 * 1024 * 1024 * 1024
+
+
 def test_json_repository_remains_available_as_fallback(tmp_path):
     settings = Settings(
         storage_dir=tmp_path,
@@ -138,6 +149,45 @@ def test_sqlite_repository_imports_legacy_json_when_empty(tmp_path):
     imported = repository.get(created.id)
     assert imported is not None
     assert imported.title == "Reuniao legado"
+
+
+def test_database_initialization_creates_all_sqlite_tables(tmp_path):
+    settings = Settings(
+        storage_dir=tmp_path,
+        database_backend="sqlite",
+        database_path=tmp_path / "ataai.sqlite3",
+        gemini_api_key=None,
+        openai_api_key=None,
+    )
+
+    initialize_database(settings)
+
+    import sqlite3
+
+    with sqlite3.connect(settings.database_path) as connection:
+        tables = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            ).fetchall()
+        }
+
+    assert {"users", "sessions", "meetings", "meeting_presets"}.issubset(tables)
+
+
+def test_tauri_origin_is_allowed_for_auth_requests(tmp_path):
+    client = make_client(tmp_path)
+
+    response = client.options(
+        "/api/auth/login",
+        headers={
+            "Origin": "http://tauri.localhost",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://tauri.localhost"
 
 
 def test_postgres_backend_is_reserved_until_driver_is_added(tmp_path):
@@ -219,7 +269,38 @@ def test_lists_default_preset_for_authenticated_user(tmp_path):
     presets = response.json()["items"]
     assert len(presets) == 1
     assert presets[0]["is_default"] is True
-    assert presets[0]["name"] == "Ata objetiva com tarefas"
+    assert presets[0]["name"] == "Ata operacional com solicitações de mudança"
+    assert "Tarefas levantadas" in presets[0]["instructions"]
+
+
+def test_existing_default_preset_is_upgraded_to_operational_minutes(tmp_path):
+    client = make_client(tmp_path)
+    headers = auth_headers(client)
+    old_default = client.get("/api/presets", headers=headers).json()["items"][0]
+
+    import sqlite3
+
+    with sqlite3.connect(tmp_path / "ataai.sqlite3") as connection:
+        payload = {
+            **old_default,
+            "name": "Ata objetiva com tarefas",
+            "description": "Modelo antigo.",
+            "instructions": "Gere uma ata objetiva em portugues do Brasil.",
+        }
+        connection.execute(
+            """
+            UPDATE meeting_presets
+            SET name = ?, payload = ?
+            WHERE id = ?
+            """,
+            ("Ata objetiva com tarefas", json.dumps(payload), old_default["id"]),
+        )
+        connection.commit()
+
+    upgraded = client.get("/api/presets", headers=headers).json()["items"][0]
+
+    assert upgraded["name"] == "Ata operacional com solicitações de mudança"
+    assert "Critérios de aceite" in upgraded["instructions"]
 
 
 def test_custom_presets_are_isolated_by_user(tmp_path):
@@ -302,7 +383,7 @@ def test_processing_uses_custom_preset(tmp_path):
     assert processed["preset"] == "Ata executiva"
     assert processed["preset_id"] == preset["id"]
     assert "resumo executivo curto" in processed["preset_instructions"]
-    assert "- Preset: Ata executiva" in processed["analysis"]["minutes_markdown"]
+    assert "Tarefas levantadas" in processed["analysis"]["minutes_markdown"]
 
 
 def test_rejects_unsupported_upload(tmp_path):
@@ -328,6 +409,49 @@ def test_rejects_unsupported_upload(tmp_path):
 
     assert response.status_code == 400
     assert "Formato nao suportado" in response.json()["detail"]
+
+
+def test_upload_prepares_audio_and_removes_original_when_tools_are_available(tmp_path):
+    from app.main import get_media_service
+
+    client = make_client(tmp_path)
+    headers = auth_headers(client)
+    media_settings = Settings(
+        storage_dir=tmp_path,
+        database_backend="sqlite",
+        database_path=tmp_path / "ataai.sqlite3",
+        gemini_api_key=None,
+        openai_api_key=None,
+    )
+    app.dependency_overrides[get_media_service] = lambda: FakeMediaService(media_settings)
+    meeting = client.post(
+        "/api/meetings",
+        headers=headers,
+        json={
+            "title": "Reuniao com video grande",
+            "client_name": "Cliente",
+            "participants": [],
+            "notes": None,
+            "consent_confirmed": True,
+        },
+    ).json()
+
+    response = client.post(
+        f"/api/meetings/{meeting['id']}/upload",
+        headers=headers,
+        files={"file": ("gravacao.mp4", b"video simulado", "video/mp4")},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["prepared_audio"]["stored_name"] == "prepared.wav"
+    assert "Audio comprimido preparado no upload" in payload["processing_steps"]
+    assert any(
+        "Arquivo original removido" in warning
+        for warning in payload["file"]["validation_warnings"]
+    )
+    original_path = tmp_path / "uploads" / meeting["id"] / payload["file"]["stored_name"]
+    assert not original_path.exists()
 
 
 def test_processing_fails_clearly_without_media_tools(tmp_path):
@@ -684,6 +808,70 @@ def test_processing_fails_without_gemini_key_after_audio_preparation(tmp_path):
     payload = client.get(f"/api/meetings/{meeting['id']}", headers=headers).json()
     assert payload["status"] == "failed"
     assert "GEMINI_API_KEY" in payload["processing_error"]
+
+
+def test_gemini_transcription_falls_back_after_transient_model_error(tmp_path, monkeypatch):
+    settings = Settings(
+        storage_dir=tmp_path,
+        database_backend="sqlite",
+        database_path=tmp_path / "ataai.sqlite3",
+        gemini_api_key="test-key",
+        transcription_model="gemini-2.5-flash",
+        transcription_fallback_models="gemini-2.5-flash-lite,gemini-2.0-flash",
+        transcription_retry_attempts=1,
+        transcription_retry_delay_seconds=0,
+        openai_api_key=None,
+    )
+    audio_dir = tmp_path / "prepared" / "meeting-1"
+    audio_dir.mkdir(parents=True)
+    (audio_dir / "prepared.mp3").write_bytes(b"audio")
+    provider = GeminiTranscriptionProvider(settings, MediaService(settings))
+    attempted_urls = []
+
+    class FakeResponse:
+        def __init__(self, status_code, payload):
+            self.status_code = status_code
+            self._payload = payload
+            self.text = str(payload)
+
+        def json(self):
+            return self._payload
+
+    def fake_post(url, **kwargs):
+        attempted_urls.append(url)
+        if "gemini-2.5-flash:" in url:
+            return FakeResponse(
+                503,
+                {"error": {"message": "This model is currently experiencing high demand."}},
+            )
+        return FakeResponse(
+            200,
+            {"candidates": [{"content": {"parts": [{"text": "{\"text\":\"ok\"}"}]}}]},
+        )
+
+    monkeypatch.setattr("app.transcription.httpx.post", fake_post)
+
+    result = provider.transcribe(
+        "meeting-1",
+        PreparedAudioInfo(stored_name="prepared.mp3", content_type="audio/mpeg", size_bytes=5),
+    )
+
+    assert result.text == "ok"
+    assert result.model == "gemini-2.5-flash-lite"
+    assert any("gemini-2.5-flash:" in url for url in attempted_urls)
+    assert any("gemini-2.5-flash-lite:" in url for url in attempted_urls)
+
+
+def test_gemini_transcription_accepts_plain_text_output():
+    output = "Cliente pediu correcao do fluxo de documentos e retorno com prazo."
+
+    assert parse_transcription_output(output) == output
+
+
+def test_gemini_transcription_extracts_json_embedded_in_text():
+    output = 'Resultado:\n{"text": "Transcricao extraida com sucesso."}\nFim.'
+
+    assert parse_transcription_output(output) == "Transcricao extraida com sucesso."
 
 
 def test_minutes_generation_fails_without_gemini_key_after_mock_transcription(tmp_path):

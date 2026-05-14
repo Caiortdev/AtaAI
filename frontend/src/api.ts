@@ -18,19 +18,69 @@ export function setAuthToken(token: string | null) {
   accessToken = token;
 }
 
+function formatApiError(detail: unknown): string {
+  if (typeof detail === "string" && detail.trim()) {
+    return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (item && typeof item === "object" && "msg" in item) {
+          return String(item.msg);
+        }
+        return String(item);
+      })
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  return "Erro inesperado.";
+}
+
+async function parseError(response: Response): Promise<string> {
+  const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
+  return formatApiError((error as { detail?: unknown }).detail);
+}
+
+let onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(callback: () => void) {
+  onUnauthorized = callback;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...init?.headers,
-    },
-  });
+  let response: Response;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("A requisicao excedeu o tempo limite. Verifique se o backend esta respondendo.");
+    }
+    throw new Error(
+      `Nao foi possivel conectar ao backend em ${API_URL}. Verifique se a API esta rodando na porta 8000.`,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (response.status === 401 && accessToken && !path.includes("/api/auth/")) {
+    if (onUnauthorized) onUnauthorized();
+    throw new Error("Sessao expirada. Faca login novamente.");
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
-    throw new Error(error.detail ?? "Erro inesperado.");
+    throw new Error(await parseError(response));
   }
 
   if (response.status === 204) {
@@ -101,11 +151,16 @@ export async function createMeeting(payload: MeetingCreate): Promise<Meeting> {
   });
 }
 
-export async function uploadMeetingFile(meetingId: string, file: File): Promise<Meeting> {
+export async function uploadMeetingFile(
+  meetingId: string,
+  file: File,
+  autoProcess = false,
+): Promise<Meeting> {
   const formData = new FormData();
   formData.append("file", file);
 
-  return request<Meeting>(`/api/meetings/${meetingId}/upload`, {
+  const query = autoProcess ? "?auto_process=true" : "";
+  return request<Meeting>(`/api/meetings/${meetingId}/upload${query}`, {
     method: "POST",
     body: formData,
   });
@@ -132,13 +187,66 @@ export async function updateMeetingAnalysis(
   });
 }
 
-export async function exportMeetingPdf(meetingId: string): Promise<{ blob: Blob; filename: string }> {
-  const response = await fetch(`${API_URL}/api/meetings/${meetingId}/analysis.pdf`, {
-    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+export function createLiveWebSocket(meetingId: string): WebSocket {
+  const wsBase = API_URL.replace(/^http/, "ws");
+  const token = accessToken ?? "";
+  return new WebSocket(`${wsBase}/ws/live/${meetingId}?token=${encodeURIComponent(token)}`);
+}
+
+export async function quickProcessMeeting(
+  file: File,
+  presetId?: string,
+  mode: "audio_only" | "audio_video" = "audio_only",
+): Promise<Meeting> {
+  const formData = new FormData();
+  formData.append("file", file);
+  if (presetId) formData.append("preset_id", presetId);
+  if (mode !== "audio_only") formData.append("mode", mode);
+
+  return request<Meeting>("/api/meetings/quick", {
+    method: "POST",
+    body: formData,
   });
+}
+
+export async function trimMeeting(
+  meetingId: string,
+  startSeconds: number,
+  endSeconds: number,
+): Promise<{ duration_seconds: number; size_bytes: number }> {
+  return request<{ duration_seconds: number; size_bytes: number }>(
+    `/api/meetings/${meetingId}/trim`,
+    {
+      method: "POST",
+      body: JSON.stringify({ start_seconds: startSeconds, end_seconds: endSeconds }),
+    },
+  );
+}
+
+export async function getStorageConfig(): Promise<{ enabled: boolean; path: string }> {
+  return request<{ enabled: boolean; path: string }>("/api/storage/config");
+}
+
+export async function updateStorageConfig(path: string): Promise<{ enabled: boolean; path: string }> {
+  return request<{ enabled: boolean; path: string }>("/api/storage/config", {
+    method: "PUT",
+    body: JSON.stringify({ path }),
+  });
+}
+
+export async function exportMeetingPdf(meetingId: string): Promise<{ blob: Blob; filename: string }> {
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}/api/meetings/${meetingId}/analysis.pdf`, {
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+    });
+  } catch (error) {
+    throw new Error(
+      `Nao foi possivel conectar ao backend em ${API_URL}. Verifique se a API esta rodando na porta 8000.`,
+    );
+  }
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: "Erro inesperado." }));
-    throw new Error(error.detail ?? "Erro inesperado.");
+    throw new Error(await parseError(response));
   }
 
   const disposition = response.headers.get("content-disposition") ?? "";

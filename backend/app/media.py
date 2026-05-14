@@ -19,17 +19,20 @@ class MediaValidationError(Exception):
 class MediaService:
     audio_extensions = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".webm"}
     video_extensions = {".mp4", ".mov", ".mkv", ".webm", ".avi"}
+    content_types = {
+        ".aac": "audio/aac",
+        ".flac": "audio/flac",
+        ".m4a": "audio/mp4",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".wav": "audio/wav",
+        ".webm": "audio/webm",
+    }
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def validate_upload(self, filename: str | None, size_bytes: int) -> tuple[str, MediaKind]:
-        if size_bytes <= 0:
-            raise MediaValidationError("O arquivo enviado esta vazio.")
-        if size_bytes > self.settings.max_upload_bytes:
-            max_mb = self.settings.max_upload_bytes // (1024 * 1024)
-            raise MediaValidationError(f"O arquivo excede o limite de {max_mb} MB.")
-
+    def validate_upload_type(self, filename: str | None) -> tuple[str, MediaKind]:
         extension = Path(filename or "").suffix.lower()
         if extension in self.audio_extensions:
             return extension, MediaKind.audio
@@ -38,6 +41,18 @@ class MediaService:
 
         accepted = ", ".join(sorted(self.audio_extensions | self.video_extensions))
         raise MediaValidationError(f"Formato nao suportado. Envie um destes formatos: {accepted}.")
+
+    def validate_upload_size(self, size_bytes: int) -> None:
+        if size_bytes <= 0:
+            raise MediaValidationError("O arquivo enviado esta vazio.")
+        if size_bytes > self.settings.max_upload_bytes:
+            max_mb = self.settings.max_upload_bytes // (1024 * 1024)
+            raise MediaValidationError(f"O arquivo excede o limite de {max_mb} MB.")
+
+    def validate_upload(self, filename: str | None, size_bytes: int) -> tuple[str, MediaKind]:
+        extension, media_kind = self.validate_upload_type(filename)
+        self.validate_upload_size(size_bytes)
+        return extension, media_kind
 
     def probe(self, source_path: Path) -> dict:
         ffprobe = self._require_binary(self.settings.ffprobe_binary, "FFprobe")
@@ -79,7 +94,7 @@ class MediaService:
         ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
         prepared_dir = self.settings.storage_dir / "prepared" / meeting_id
         prepared_dir.mkdir(parents=True, exist_ok=True)
-        target_name = f"{uuid4()}.wav"
+        target_name = f"{uuid4()}.mp3"
         target_path = prepared_dir / target_name
 
         command = [
@@ -92,8 +107,10 @@ class MediaService:
             "1",
             "-ar",
             "16000",
-            "-acodec",
-            "pcm_s16le",
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "32k",
             str(target_path),
         ]
         result = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
@@ -105,6 +122,7 @@ class MediaService:
         duration = self._duration_from_probe(probe)
         return PreparedAudioInfo(
             stored_name=target_name,
+            content_type=self.content_type_for_path(target_path),
             size_bytes=target_path.stat().st_size,
             duration_seconds=duration,
         )
@@ -120,10 +138,11 @@ class MediaService:
         ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
         chunks_dir = self.settings.storage_dir / "chunks" / meeting_id
         chunks_dir.mkdir(parents=True, exist_ok=True)
-        for stale_chunk in chunks_dir.glob("chunk-*.wav"):
+        for stale_chunk in chunks_dir.glob("chunk-*"):
             stale_chunk.unlink()
 
-        target_pattern = chunks_dir / "chunk-%03d.wav"
+        extension = source_path.suffix or ".mp3"
+        target_pattern = chunks_dir / f"chunk-%03d{extension}"
         command = [
             ffmpeg,
             "-y",
@@ -144,11 +163,189 @@ class MediaService:
 
         chunks = sorted(chunks_dir.glob("chunk-*.wav"))
         if not chunks:
+            chunks = sorted(chunks_dir.glob(f"chunk-*{extension}"))
+        if not chunks:
             raise MediaProcessingError("FFmpeg nao gerou trechos de audio para transcricao.")
         return chunks
 
     def upload_path(self, meeting_id: str, stored_name: str) -> Path:
         return self.settings.storage_dir / "uploads" / meeting_id / stored_name
+
+    def delete_upload(self, meeting_id: str, file_info: UploadedFileInfo) -> None:
+        source_path = self.upload_path(meeting_id, file_info.stored_name)
+        source_path.unlink(missing_ok=True)
+
+    def content_type_for_path(self, path: Path) -> str:
+        return self.content_types.get(path.suffix.lower(), "application/octet-stream")
+
+    def trim_media(
+        self, meeting_id: str, input_path: Path, start_seconds: float, end_seconds: float
+    ) -> PreparedAudioInfo:
+        ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
+        prepared_dir = self.settings.storage_dir / "prepared" / meeting_id
+        prepared_dir.mkdir(parents=True, exist_ok=True)
+        target_name = f"{uuid4()}.mp3"
+        target_path = prepared_dir / target_name
+
+        command = [
+            ffmpeg,
+            "-y",
+            "-ss",
+            str(start_seconds),
+            "-to",
+            str(end_seconds),
+            "-i",
+            str(input_path),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "32k",
+            str(target_path),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or "Nao foi possivel cortar o audio com FFmpeg."
+            raise MediaProcessingError(detail)
+
+        probe = self.probe(target_path)
+        duration = self._duration_from_probe(probe)
+        return PreparedAudioInfo(
+            stored_name=target_name,
+            content_type=self.content_type_for_path(target_path),
+            size_bytes=target_path.stat().st_size,
+            duration_seconds=duration,
+        )
+
+    def concatenate_live_chunks(self, meeting_id: str, chunks_dir: Path) -> PreparedAudioInfo | None:
+        chunks = sorted(chunks_dir.glob("chunk-*.webm"))
+        if not chunks:
+            return None
+
+        ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
+        prepared_dir = self.settings.storage_dir / "prepared" / meeting_id
+        prepared_dir.mkdir(parents=True, exist_ok=True)
+        target_name = f"{uuid4()}.mp3"
+        target_path = prepared_dir / target_name
+
+        concat_list = chunks_dir / "concat.txt"
+        with concat_list.open("w", encoding="utf-8") as f:
+            for chunk in chunks:
+                safe_path = str(chunk.resolve()).replace("\\", "/")
+                f.write(f"file '{safe_path}'\n")
+
+        command = [
+            ffmpeg,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "32k",
+            str(target_path),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=600, check=False)
+        concat_list.unlink(missing_ok=True)
+
+        if result.returncode != 0:
+            detail = result.stderr.strip() or "Nao foi possivel concatenar os chunks de audio ao vivo."
+            raise MediaProcessingError(detail)
+
+        probe = self.probe(target_path)
+        duration = self._duration_from_probe(probe)
+        return PreparedAudioInfo(
+            stored_name=target_name,
+            content_type=self.content_type_for_path(target_path),
+            size_bytes=target_path.stat().st_size,
+            duration_seconds=duration,
+        )
+
+    def detect_silence(self, audio_path: Path, threshold_db: float = -40.0) -> bool:
+        """Return True if the audio is effectively silent (mean volume below threshold).
+
+        Uses FFmpeg volumedetect filter. Returns True when the audio has no meaningful
+        speech content, preventing hallucinated transcriptions.
+        """
+        ffmpeg = self._resolve_binary(self.settings.ffmpeg_binary, "FFmpeg")
+        if not ffmpeg:
+            return False  # Can't detect without FFmpeg, skip check
+
+        command = [
+            ffmpeg,
+            "-i",
+            str(audio_path),
+            "-af",
+            "volumedetect",
+            "-f",
+            "null",
+            "-",
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=False)
+        stderr = result.stderr
+
+        # Parse mean_volume from FFmpeg output
+        import re as _re
+        match = _re.search(r"mean_volume:\s*([-\d.]+)\s*dB", stderr)
+        if not match:
+            return False  # Can't determine, assume not silent
+
+        mean_volume = float(match.group(1))
+        return mean_volume < threshold_db
+
+    def extract_frames(
+        self,
+        meeting_id: str,
+        source_path: Path,
+        interval_seconds: int = 30,
+        max_frames: int = 20,
+    ) -> list[Path]:
+        """Extract key frames from a video at regular intervals.
+
+        Returns a list of JPEG file paths (max `max_frames`).
+        """
+        ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
+        frames_dir = self.settings.storage_dir / "frames" / meeting_id
+        frames_dir.mkdir(parents=True, exist_ok=True)
+
+        # Clean stale frames
+        for stale in frames_dir.glob("frame-*"):
+            stale.unlink()
+
+        command = [
+            ffmpeg,
+            "-i",
+            str(source_path),
+            "-vf",
+            f"fps=1/{interval_seconds},scale='min(1280,iw)':-1",
+            "-q:v",
+            "3",
+            "-frames:v",
+            str(max_frames),
+            str(frames_dir / "frame-%03d.jpg"),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=300, check=False)
+        if result.returncode != 0:
+            detail = result.stderr.strip() or "Nao foi possivel extrair frames do video."
+            raise MediaProcessingError(detail)
+
+        frames = sorted(frames_dir.glob("frame-*.jpg"))
+        if not frames:
+            raise MediaProcessingError("FFmpeg nao gerou frames do video.")
+        return frames[:max_frames]
 
     def tools_status(self) -> dict[str, bool]:
         return {

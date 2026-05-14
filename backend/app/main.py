@@ -1,13 +1,19 @@
+from contextlib import asynccontextmanager
 from uuid import uuid4
+import asyncio
+import base64
+import json
 
-from fastapi import Depends, FastAPI, File, HTTPException, Response, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Response, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import Settings, get_settings
 from app.domain import (
+    AnalysisMode,
     AuthToken,
     HealthResponse,
+    LiveSessionState,
     Meeting,
     MeetingAnalysisUpdate,
     MeetingCreate,
@@ -18,13 +24,16 @@ from app.domain import (
     MeetingPresetUpdate,
     MeetingStatus,
     ProcessMeetingRequest,
+    TrimRequest,
     UploadedFileInfo,
     UserLogin,
     UserPublic,
     UserRegister,
 )
 from app.jobs import ProcessingQueue, processing_queue
-from app.media import MediaService, MediaValidationError
+from app.live import LiveSession, LiveSessionError
+from app.local_storage import LocalStorageService
+from app.media import MediaProcessingError, MediaService, MediaValidationError
 from app.minutes import build_minutes_provider
 from app.pdf_export import generate_meeting_pdf, pdf_filename
 from app.processing import MeetingProcessor
@@ -40,6 +49,36 @@ from app.transcription import build_transcription_provider
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
+UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024
+
+
+def cors_origins(settings: Settings) -> list[str]:
+    configured_origins = [
+        origin.strip() for origin in settings.frontend_origin.split(",") if origin.strip()
+    ]
+    default_origins = [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
+    ]
+    return list(dict.fromkeys([*configured_origins, *default_origins]))
+
+
+def initialize_database(settings: Settings | None = None) -> None:
+    settings = settings or get_settings()
+    if settings.database_backend.lower().strip() != "sqlite":
+        return
+    build_auth_repository(settings)
+    build_meeting_repository(settings)
+    build_preset_repository(settings)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    initialize_database()
+    yield
 
 
 def get_repository(settings: Settings = Depends(get_settings)) -> MeetingRepository:
@@ -71,6 +110,10 @@ def get_processing_queue() -> ProcessingQueue:
     return processing_queue
 
 
+def get_local_storage(settings: Settings = Depends(get_settings)) -> LocalStorageService:
+    return LocalStorageService(settings)
+
+
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     auth_repository: AuthRepository = Depends(get_auth_repository),
@@ -89,12 +132,34 @@ def get_current_user(
     return user
 
 
-app = FastAPI(title="Gerador de Ata de Reuniao por IA", version="0.1.0")
+app = FastAPI(
+    title="Gerador de Ata de Reuniao por IA",
+    version="0.1.0",
+    lifespan=lifespan,
+)
 
 settings = get_settings()
+
+
+class _WebSocketCORSBypass:
+    """ASGI middleware that strips the Origin header from WebSocket upgrade
+    requests so the CORSMiddleware does not reject them with 403.
+    WebSocket connections are already authenticated via token parameter."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            headers = [(k, v) for k, v in scope.get("headers", []) if k != b"origin"]
+            scope = dict(scope, headers=headers)
+        await self.app(scope, receive, send)
+
+
+app.add_middleware(_WebSocketCORSBypass)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:5173"],
+    allow_origins=cors_origins(settings),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -278,10 +343,13 @@ def get_meeting(
 async def upload_meeting_file(
     meeting_id: str,
     file: UploadFile = File(...),
+    auto_process: bool = Query(default=False),
     settings: Settings = Depends(get_settings),
     repository: MeetingRepository = Depends(get_repository),
     media_service: MediaService = Depends(get_media_service),
     current_user: UserPublic = Depends(get_current_user),
+    preset_repository: PresetRepository = Depends(get_preset_repository),
+    queue: ProcessingQueue = Depends(get_processing_queue),
 ) -> Meeting:
     meeting = repository.get(meeting_id, owner_id=current_user.id)
     if meeting is None:
@@ -290,20 +358,37 @@ async def upload_meeting_file(
     uploads_dir = settings.storage_dir / "uploads" / meeting_id
     uploads_dir.mkdir(parents=True, exist_ok=True)
 
-    content = await file.read()
     try:
-        extension, media_kind = media_service.validate_upload(file.filename, len(content))
+        extension, media_kind = media_service.validate_upload_type(file.filename)
     except MediaValidationError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     stored_name = f"{uuid4()}{extension}"
     target_path = uploads_dir / stored_name
-    target_path.write_bytes(content)
+    size_bytes = 0
+    try:
+        with target_path.open("wb") as output:
+            while chunk := await file.read(UPLOAD_CHUNK_BYTES):
+                size_bytes += len(chunk)
+                if size_bytes > settings.max_upload_bytes:
+                    raise MediaValidationError(
+                        f"O arquivo excede o limite de {settings.max_upload_bytes // (1024 * 1024)} MB."
+                    )
+                output.write(chunk)
+        media_service.validate_upload_size(size_bytes)
+    except MediaValidationError as exc:
+        target_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     validation_warnings = []
-    if not media_service.tools_status()["ffprobe"]:
+    media_tools = media_service.tools_status()
+    if not media_tools["ffprobe"]:
         validation_warnings.append(
             "FFprobe nao esta configurado; duracao e codec serao validados no processamento."
+        )
+    if not media_tools["ffmpeg"]:
+        validation_warnings.append(
+            "FFmpeg nao esta configurado; o arquivo original sera mantido ate o processamento."
         )
 
     file_info = UploadedFileInfo(
@@ -312,10 +397,49 @@ async def upload_meeting_file(
         extension=extension,
         media_kind=media_kind,
         content_type=file.content_type,
-        size_bytes=len(content),
+        size_bytes=size_bytes,
         validation_warnings=validation_warnings,
     )
-    return repository.attach_file(meeting_id, file_info, owner_id=current_user.id)
+    prepared_audio = None
+    if media_tools["ffmpeg"] and media_tools["ffprobe"]:
+        try:
+            prepared_audio = media_service.prepare_audio(meeting_id, file_info)
+        except MediaProcessingError as exc:
+            target_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        # Keep original video for potential visual analysis; delete audio-only uploads
+        if file_info.media_kind.value == "audio":
+            media_service.delete_upload(meeting_id, file_info)
+            file_info.validation_warnings.append(
+                "Arquivo original removido apos gerar audio comprimido para processamento."
+            )
+
+    updated = repository.attach_file(meeting_id, file_info, owner_id=current_user.id)
+    if prepared_audio is not None:
+        updated.prepared_audio = prepared_audio
+        updated.processing_steps.append("Audio comprimido preparado no upload")
+        updated = repository.save(updated)
+
+    if auto_process and updated.prepared_audio is not None:
+        preset = preset_repository.ensure_default(current_user.id)
+        request = ProcessMeetingRequest(preset_id=preset.id)
+        updated.status = MeetingStatus.queued
+        updated.preset = preset.name
+        updated.preset_id = preset.id
+        updated.preset_instructions = preset.instructions
+        updated.processing_steps.append("Processamento enfileirado automaticamente")
+        updated = repository.save(updated)
+
+        transcription_provider = build_transcription_provider(settings, media_service)
+        minutes_prov = build_minutes_provider(settings)
+        processor = MeetingProcessor(media_service, transcription_provider, minutes_prov)
+        _mid, _req, _repo, _proc = updated.id, request, repository, processor
+        queue.enqueue(
+            meeting_id=_mid,
+            run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
+        )
+
+    return updated
 
 
 @app.post("/api/meetings/{meeting_id}/process", response_model=Meeting)
@@ -352,11 +476,158 @@ def process_meeting(
     meeting.processing_error = None
     meeting.processing_steps = ["Arquivo recebido", "Processamento enfileirado"]
     queued = repository.save(meeting)
+    _mid, _payload, _repo, _proc = meeting.id, payload, repository, processor
     queue.enqueue(
-        meeting_id=meeting.id,
-        run=lambda: run_processing_job(meeting.id, payload, repository, processor),
+        meeting_id=_mid,
+        run=lambda mid=_mid, req=_payload, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
     )
     return queued
+
+
+@app.post("/api/meetings/quick", response_model=Meeting, status_code=status.HTTP_201_CREATED)
+async def quick_process_meeting(
+    file: UploadFile = File(...),
+    preset_id: str | None = Form(default=None),
+    mode: str = Form(default="audio_only"),
+    settings: Settings = Depends(get_settings),
+    repository: MeetingRepository = Depends(get_repository),
+    media_service: MediaService = Depends(get_media_service),
+    current_user: UserPublic = Depends(get_current_user),
+    preset_repository: PresetRepository = Depends(get_preset_repository),
+    queue: ProcessingQueue = Depends(get_processing_queue),
+) -> Meeting:
+    try:
+        extension, media_kind = media_service.validate_upload_type(file.filename)
+    except MediaValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    meeting_create = MeetingCreate(
+        title="Ata rapida - processando...",
+        consent_confirmed=True,
+    )
+    meeting = repository.create(meeting_create, owner_id=current_user.id)
+
+    uploads_dir = settings.storage_dir / "uploads" / meeting.id
+    uploads_dir.mkdir(parents=True, exist_ok=True)
+
+    stored_name = f"{uuid4()}{extension}"
+    target_path = uploads_dir / stored_name
+    size_bytes = 0
+    try:
+        with target_path.open("wb") as output:
+            while chunk := await file.read(UPLOAD_CHUNK_BYTES):
+                size_bytes += len(chunk)
+                if size_bytes > settings.max_upload_bytes:
+                    raise MediaValidationError(
+                        f"O arquivo excede o limite de {settings.max_upload_bytes // (1024 * 1024)} MB."
+                    )
+                output.write(chunk)
+        media_service.validate_upload_size(size_bytes)
+    except MediaValidationError as exc:
+        target_path.unlink(missing_ok=True)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    file_info = UploadedFileInfo(
+        original_name=file.filename or stored_name,
+        stored_name=stored_name,
+        extension=extension,
+        media_kind=media_kind,
+        content_type=file.content_type,
+        size_bytes=size_bytes,
+    )
+
+    prepared_audio = None
+    media_tools = media_service.tools_status()
+    if media_tools["ffmpeg"] and media_tools["ffprobe"]:
+        try:
+            prepared_audio = media_service.prepare_audio(meeting.id, file_info)
+        except MediaProcessingError as exc:
+            target_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        # Keep original video for potential visual analysis
+        if file_info.media_kind.value == "audio":
+            media_service.delete_upload(meeting.id, file_info)
+
+    meeting = repository.attach_file(meeting.id, file_info, owner_id=current_user.id)
+    if prepared_audio is not None:
+        meeting.prepared_audio = prepared_audio
+        meeting = repository.save(meeting)
+
+    if preset_id:
+        preset = preset_repository.get(preset_id, current_user.id)
+        if preset is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Preset nao encontrado.")
+    else:
+        preset = preset_repository.ensure_default(current_user.id)
+
+    analysis_mode = AnalysisMode(mode) if mode in ("audio_only", "audio_video") else AnalysisMode.audio_only
+    request = ProcessMeetingRequest(preset_id=preset.id, auto_metadata=True, mode=analysis_mode)
+    meeting.status = MeetingStatus.queued
+    meeting.preset = preset.name
+    meeting.preset_id = preset.id
+    meeting.preset_instructions = preset.instructions
+    meeting.processing_steps = ["Arquivo recebido", "Processamento rapido enfileirado"]
+    meeting = repository.save(meeting)
+
+    transcription_provider = build_transcription_provider(settings, media_service)
+    minutes_prov = build_minutes_provider(settings)
+    processor = MeetingProcessor(media_service, transcription_provider, minutes_prov)
+    _mid, _req, _repo, _proc = meeting.id, request, repository, processor
+    queue.enqueue(
+        meeting_id=_mid,
+        run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
+    )
+
+    return meeting
+
+
+@app.post("/api/meetings/{meeting_id}/trim")
+def trim_meeting_media(
+    meeting_id: str,
+    payload: TrimRequest,
+    settings: Settings = Depends(get_settings),
+    repository: MeetingRepository = Depends(get_repository),
+    media_service: MediaService = Depends(get_media_service),
+    current_user: UserPublic = Depends(get_current_user),
+) -> dict:
+    meeting = repository.get(meeting_id, owner_id=current_user.id)
+    if meeting is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reuniao nao encontrada.")
+
+    if payload.start_seconds >= payload.end_seconds:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="start_seconds deve ser menor que end_seconds.",
+        )
+
+    if meeting.prepared_audio:
+        audio_dir = settings.storage_dir / "prepared" / meeting_id
+        input_path = audio_dir / meeting.prepared_audio.stored_name
+    elif meeting.file:
+        input_path = settings.storage_dir / "uploads" / meeting_id / meeting.file.stored_name
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Envie um arquivo antes de cortar.",
+        )
+
+    try:
+        trimmed_info = media_service.trim_media(
+            meeting_id, input_path, payload.start_seconds, payload.end_seconds
+        )
+    except MediaProcessingError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    meeting.prepared_audio = trimmed_info
+    meeting.processing_steps.append(
+        f"Audio cortado: {payload.start_seconds:.1f}s a {payload.end_seconds:.1f}s"
+    )
+    repository.save(meeting)
+
+    return {
+        "duration_seconds": trimmed_info.duration_seconds,
+        "size_bytes": trimmed_info.size_bytes,
+    }
 
 
 def resolve_processing_preset(
@@ -393,6 +664,18 @@ def run_processing_job(
         return
 
     repository.save(processed)
+
+    if processed.status == MeetingStatus.completed and processed.analysis:
+        try:
+            settings = get_settings()
+            if settings.local_export_enabled:
+                storage = LocalStorageService(settings)
+                pdf_bytes = generate_meeting_pdf(processed)
+                storage.save_ata_pdf(processed, pdf_bytes)
+                processed.processing_steps.append("PDF exportado para pasta local")
+                repository.save(processed)
+        except Exception:
+            pass
 
 
 @app.patch("/api/meetings/{meeting_id}/analysis", response_model=Meeting)
@@ -443,3 +726,189 @@ def export_meeting_analysis_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@app.get("/api/storage/config")
+def get_storage_config(
+    current_user: UserPublic = Depends(get_current_user),
+    local_storage: LocalStorageService = Depends(get_local_storage),
+) -> dict:
+    return local_storage.get_config()
+
+
+@app.put("/api/storage/config")
+def update_storage_config(
+    payload: dict,
+    current_user: UserPublic = Depends(get_current_user),
+    local_storage: LocalStorageService = Depends(get_local_storage),
+) -> dict:
+    new_path = payload.get("path")
+    if not new_path or not isinstance(new_path, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Informe o campo 'path' com o caminho da pasta.",
+        )
+    try:
+        return local_storage.update_path(new_path)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Nao foi possivel acessar a pasta: {exc}",
+        ) from exc
+
+
+def authenticate_ws_token(token: str, auth_repository: AuthRepository) -> UserPublic | None:
+    if not token:
+        return None
+    return auth_repository.get_user_by_token(token)
+
+
+@app.websocket("/ws/live/{meeting_id}")
+async def live_session_ws(
+    websocket: WebSocket,
+    meeting_id: str,
+) -> None:
+    settings = get_settings()
+    auth_repository = build_auth_repository(settings)
+    repository = build_meeting_repository(settings)
+
+    token = websocket.query_params.get("token", "")
+    user = authenticate_ws_token(token, auth_repository)
+    if user is None:
+        await websocket.close(code=4001, reason="Autenticacao necessaria.")
+        return
+
+    meeting = repository.get(meeting_id, owner_id=user.id)
+    if meeting is None:
+        await websocket.close(code=4004, reason="Reuniao nao encontrada.")
+        return
+
+    await websocket.accept()
+
+    session = LiveSession(meeting_id, settings)
+    _ws_state = {"open": True}
+
+    async def _safe_send(data: dict) -> None:
+        if not _ws_state["open"]:
+            return
+        try:
+            await websocket.send_json(data)
+        except Exception:
+            pass
+
+    async def on_transcript(text: str, is_final: bool) -> None:
+        await _safe_send({"type": "transcript", "text": text, "is_final": is_final})
+
+    async def on_draft(markdown: str) -> None:
+        await _safe_send({"type": "draft", "markdown": markdown})
+
+    async def on_status(state) -> None:
+        await _safe_send({"type": "status", "state": str(state)})
+
+    async def on_error(message: str) -> None:
+        await _safe_send({"type": "error", "message": message})
+
+    session.on_transcript(on_transcript)
+    session.on_draft(on_draft)
+    session.on_status(on_status)
+    session.on_error(on_error)
+
+    try:
+        await session.start()
+
+        meeting.status = MeetingStatus.recording
+        repository.save(meeting)
+
+        while True:
+            raw = await websocket.receive_text()
+            try:
+                message = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+
+            msg_type = message.get("type")
+
+            if msg_type == "audio":
+                data = message.get("data", "")
+                if data:
+                    if len(data) > 2 * 1024 * 1024:
+                        await _safe_send({"type": "error", "message": "Chunk de audio excede 2MB."})
+                        continue
+                    audio_bytes = base64.b64decode(data)
+                    await session.send_audio(audio_bytes)
+
+            elif msg_type == "pause":
+                await session.pause()
+
+            elif msg_type == "resume":
+                await session.resume()
+
+            elif msg_type == "stop":
+                await session.stop()
+                await _finalize_live_recording(session, meeting, settings, repository)
+                break
+
+    except WebSocketDisconnect:
+        _ws_state["open"] = False
+        if session.state not in (LiveSessionState.done, LiveSessionState.finalizing):
+            await session.stop()
+            await _finalize_live_recording(session, meeting, settings, repository)
+    except LiveSessionError as exc:
+        try:
+            await websocket.send_json({"type": "error", "message": str(exc)})
+            await websocket.close(code=4000, reason=str(exc))
+        except Exception:
+            pass
+        _ws_state["open"] = False
+    except Exception as exc:
+        try:
+            await websocket.send_json({"type": "error", "message": f"Erro inesperado: {exc}"})
+            await websocket.close(code=4000)
+        except Exception:
+            pass
+        _ws_state["open"] = False
+
+
+async def _finalize_live_recording(
+    session: LiveSession,
+    meeting: Meeting,
+    settings: Settings,
+    repository: MeetingRepository,
+) -> None:
+    media_service = MediaService(settings)
+    chunks_dir = session.get_chunks_dir()
+
+    loop = asyncio.get_running_loop()
+    prepared_audio = await loop.run_in_executor(
+        None, media_service.concatenate_live_chunks, meeting.id, chunks_dir
+    )
+    if prepared_audio is not None:
+        meeting.prepared_audio = prepared_audio
+        meeting.status = MeetingStatus.queued
+        meeting.processing_steps = ["Gravacao ao vivo finalizada", "Processamento enfileirado"]
+        repository.save(meeting)
+
+        if settings.local_export_enabled:
+            try:
+                storage = LocalStorageService(settings)
+                audio_path = media_service.prepared_audio_path(meeting.id, prepared_audio)
+                storage.save_recording(meeting, audio_path)
+                meeting.processing_steps.append("Gravacao salva na pasta local")
+                repository.save(meeting)
+            except Exception:
+                pass
+
+        transcription_provider = build_transcription_provider(settings, media_service)
+        minutes_provider = build_minutes_provider(settings)
+        processor = MeetingProcessor(media_service, transcription_provider, minutes_provider)
+        request = ProcessMeetingRequest()
+        queue = get_processing_queue()
+        _mid, _req, _repo, _proc = meeting.id, request, repository, processor
+        queue.enqueue(
+            meeting_id=_mid,
+            run=lambda mid=_mid, req=_req, repo=_repo, proc=_proc: run_processing_job(mid, req, repo, proc),
+        )
+    else:
+        meeting.status = MeetingStatus.failed
+        meeting.processing_error = "Nenhum audio foi gravado durante a sessao ao vivo."
+        repository.save(meeting)
