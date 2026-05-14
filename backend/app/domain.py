@@ -185,6 +185,12 @@ class ProcessMeetingRequest(BaseModel):
     mode: AnalysisMode = AnalysisMode.audio_only
     preset: str = "ata_objetiva_com_tarefas"
     preset_id: str | None = None
+    auto_metadata: bool = False
+
+
+class TrimRequest(BaseModel):
+    start_seconds: float = Field(ge=0)
+    end_seconds: float = Field(gt=0)
 
 
 class MeetingListResponse(BaseModel):

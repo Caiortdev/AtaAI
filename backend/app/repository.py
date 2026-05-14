@@ -1,6 +1,7 @@
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
@@ -256,10 +257,18 @@ class SQLiteMeetingRepository:
             raise KeyError(meeting_id)
         return meeting
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _migrate(self) -> None:
         with self._lock, self._connect() as connection:
@@ -415,10 +424,18 @@ class SQLiteAuthRepository:
             connection.execute("DELETE FROM sessions WHERE token_hash = ?", (hash_token(token),))
             connection.commit()
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _migrate(self) -> None:
         with self._lock, self._connect() as connection:
@@ -586,10 +603,18 @@ class SQLitePresetRepository:
             connection.commit()
             return preset
 
-    def _connect(self) -> sqlite3.Connection:
+    @contextmanager
+    def _connect(self):
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
-        return connection
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
 
     def _migrate(self) -> None:
         with self._lock, self._connect() as connection:

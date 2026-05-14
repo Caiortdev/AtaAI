@@ -1,7 +1,10 @@
-from app.domain import Meeting, MeetingStatus, ProcessMeetingRequest
+from app.domain import AnalysisMode, Meeting, MeetingStatus, ProcessMeetingRequest
 from app.media import MediaProcessingError, MediaService
 from app.minutes import MinutesGenerationError, MinutesProvider
 from app.transcription import TranscriptionError, TranscriptionProvider
+
+import re
+from pathlib import Path
 
 
 class MeetingProcessor:
@@ -43,19 +46,102 @@ class MeetingProcessor:
             else:
                 meeting.processing_steps.append("Audio preparado reutilizado")
 
+            audio_path = self.media_service.prepared_audio_path(meeting.id, meeting.prepared_audio)
+            if self.media_service.detect_silence(audio_path):
+                raise MediaProcessingError(
+                    "O audio nao contem fala audivel. Verifique se o arquivo possui som "
+                    "ou se o microfone estava ativo durante a gravacao."
+                )
+            meeting.processing_steps.append("Audio validado (contem fala)")
+
             transcription = self.transcription_provider.transcribe(meeting.id, meeting.prepared_audio)
+
+            if not self._is_valid_transcription(transcription.text):
+                raise TranscriptionError(
+                    "A transcricao retornada esta vazia ou nao contem conteudo significativo. "
+                    "Verifique se o audio possui fala clara e audivel."
+                )
+
             meeting.processing_steps.append(
                 f"Transcricao gerada por {transcription.provider}/{transcription.model}"
             )
-            analysis = self.minutes_provider.generate(meeting=meeting, transcription=transcription)
+
+            # Extract video frames if mode is audio_video and file is a video
+            frames: list[Path] = []
+            if (
+                request.mode == AnalysisMode.audio_video
+                and meeting.file is not None
+                and meeting.file.media_kind.value == "video"
+            ):
+                upload_path = self.media_service.upload_path(meeting.id, meeting.file.stored_name)
+                if upload_path.exists():
+                    try:
+                        frames = self.media_service.extract_frames(meeting.id, upload_path)
+                        meeting.processing_steps.append(
+                            f"{len(frames)} frames extraidos para analise visual"
+                        )
+                    except MediaProcessingError:
+                        meeting.processing_steps.append(
+                            "Nao foi possivel extrair frames; continuando sem analise visual"
+                        )
+                else:
+                    meeting.processing_steps.append(
+                        "Arquivo de video nao encontrado; continuando sem analise visual"
+                    )
+
+            analysis = self.minutes_provider.generate(
+                meeting=meeting, transcription=transcription, frames=frames
+            )
             meeting.processing_steps.append(
                 f"Ata e tarefas geradas por {analysis.minutes_provider}/{analysis.minutes_model}"
             )
 
             meeting.analysis = analysis
             meeting.status = MeetingStatus.completed
+
+            if request.auto_metadata:
+                self._extract_metadata(meeting)
+                meeting.processing_steps.append("Metadados extraidos automaticamente da ata")
+
         except (MediaProcessingError, TranscriptionError, MinutesGenerationError) as exc:
             meeting.status = MeetingStatus.failed
             meeting.processing_error = str(exc)
             meeting.processing_steps.append("Processamento interrompido")
         return meeting
+
+    def _extract_metadata(self, meeting: Meeting) -> None:
+        if not meeting.analysis:
+            return
+        md = meeting.analysis.minutes_markdown
+
+        title_match = re.search(r"Ata de reuniao\s*[-–—]\s*(.+)", md)
+        if title_match:
+            extracted_title = title_match.group(1).strip()
+            if extracted_title and extracted_title.lower() != "nao informado":
+                meeting.title = extracted_title
+
+        participants_match = re.search(r"Participantes citados:\s*(.+)", md)
+        if participants_match:
+            raw = participants_match.group(1).strip()
+            if raw.lower() != "nao informado":
+                names = [n.strip() for n in raw.split(",") if n.strip()]
+                if names:
+                    meeting.participants = names
+
+        client_match = re.search(r"Cliente:\s*(.+)", md)
+        if client_match:
+            raw = client_match.group(1).strip()
+            if raw.lower() not in ("nao informado", "cliente nao informado"):
+                meeting.client_name = raw
+
+    @staticmethod
+    def _is_valid_transcription(text: str) -> bool:
+        """Check if transcription has meaningful content (not empty/hallucinated)."""
+        cleaned = text.strip()
+        if not cleaned:
+            return False
+        # Too short to be a real meeting transcription (less than 20 words)
+        word_count = len(cleaned.split())
+        if word_count < 20:
+            return False
+        return True

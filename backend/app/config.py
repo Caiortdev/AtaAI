@@ -36,7 +36,9 @@ class Settings(BaseSettings):
     transcription_language: str = "pt"
     transcription_prompt: str = (
         "Transcreva em portugues do Brasil. Preserve termos tecnicos, nomes de pessoas, "
-        "nomes de empresas, tarefas, prazos e decisoes mencionadas na reuniao."
+        "nomes de empresas, tarefas, prazos e decisoes mencionadas na reuniao. "
+        "Se o audio nao contiver fala humana audivel (silencio, ruido, musica sem voz), "
+        "retorne o campo text como string vazia. Nao invente conteudo."
     )
     transcription_max_file_bytes: int = 20 * 1024 * 1024
     transcription_chunk_seconds: int = 10 * 60
@@ -50,6 +52,8 @@ class Settings(BaseSettings):
     live_transcription_enabled: bool = True
     live_draft_interval_seconds: int = 30
     gemini_live_model: str = "gemini-2.5-flash"
+    local_export_enabled: bool = True
+    local_export_dir: str = ""
 
     @model_validator(mode="after")
     def resolve_runtime_paths(self) -> "Settings":

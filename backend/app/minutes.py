@@ -1,4 +1,6 @@
+import base64
 import json
+from pathlib import Path
 from typing import Literal
 
 import httpx
@@ -81,7 +83,12 @@ cliente bloqueado ou prazo urgente.
 
 
 class MinutesProvider:
-    def generate(self, meeting: Meeting, transcription: TranscriptionResult) -> MeetingAnalysis:
+    def generate(
+        self,
+        meeting: Meeting,
+        transcription: TranscriptionResult,
+        frames: list[Path] | None = None,
+    ) -> MeetingAnalysis:
         raise NotImplementedError
 
 
@@ -89,7 +96,12 @@ class MockMinutesProvider(MinutesProvider):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def generate(self, meeting: Meeting, transcription: TranscriptionResult) -> MeetingAnalysis:
+    def generate(
+        self,
+        meeting: Meeting,
+        transcription: TranscriptionResult,
+        frames: list[Path] | None = None,
+    ) -> MeetingAnalysis:
         payload = GeneratedMinutesPayload(
             executive_summary="Foram levantadas solicitacoes de mudanca e problemas operacionais para priorizacao tecnica.",
             topics=[
@@ -203,7 +215,12 @@ class OpenAIMinutesProvider(MinutesProvider):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def generate(self, meeting: Meeting, transcription: TranscriptionResult) -> MeetingAnalysis:
+    def generate(
+        self,
+        meeting: Meeting,
+        transcription: TranscriptionResult,
+        frames: list[Path] | None = None,
+    ) -> MeetingAnalysis:
         if not self.settings.openai_api_key:
             raise MinutesGenerationError(
                 "OPENAI_API_KEY nao esta configurada. Configure a chave no backend/.env "
@@ -316,7 +333,12 @@ class GeminiMinutesProvider(MinutesProvider):
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    def generate(self, meeting: Meeting, transcription: TranscriptionResult) -> MeetingAnalysis:
+    def generate(
+        self,
+        meeting: Meeting,
+        transcription: TranscriptionResult,
+        frames: list[Path] | None = None,
+    ) -> MeetingAnalysis:
         if not self.settings.gemini_api_key:
             raise MinutesGenerationError(
                 "GEMINI_API_KEY nao esta configurada. Configure a chave no backend/.env "
@@ -335,7 +357,7 @@ class GeminiMinutesProvider(MinutesProvider):
                     "Content-Type": "application/json",
                     "x-goog-api-key": self.settings.gemini_api_key,
                 },
-                json=self._request_payload(meeting, transcript),
+                json=self._request_payload(meeting, transcript, frames or []),
                 timeout=180,
             )
         except httpx.HTTPError as exc:
@@ -361,7 +383,7 @@ class GeminiMinutesProvider(MinutesProvider):
             payload=payload,
         )
 
-    def _request_payload(self, meeting: Meeting, transcript: str) -> dict:
+    def _request_payload(self, meeting: Meeting, transcript: str, frames: list[Path]) -> dict:
         metadata = {
             "titulo": meeting.title,
             "cliente": meeting.client_name or "",
@@ -370,25 +392,47 @@ class GeminiMinutesProvider(MinutesProvider):
             "preset": meeting.preset,
             "instrucoes_do_preset": meeting.preset_instructions or "",
         }
+
+        visual_instruction = ""
+        if frames:
+            visual_instruction = (
+                "\n\nAlem da transcricao, analise as imagens/frames do video anexados. "
+                "Identifique e descreva: slides apresentados, telas compartilhadas, diagramas, "
+                "quadros brancos ou qualquer conteudo visual relevante para a ata. "
+                "Inclua na ata uma secao 'Conteudo visual identificado' com os pontos principais "
+                "extraidos das imagens. Se nao houver conteudo visual relevante, omita essa secao."
+            )
+
+        parts: list[dict] = [
+            {
+                "text": (
+                    f"{OPERATIONAL_MINUTES_INSTRUCTIONS}\n\n"
+                    "Nao invente informacoes. Quando responsavel, prazo ou timestamp "
+                    "nao forem citados, use string vazia. Siga as instrucoes do preset "
+                    "informado nos metadados. Retorne somente JSON valido no schema "
+                    f"solicitado.{visual_instruction}\n\n"
+                    "Metadados da reuniao:\n"
+                    f"{json.dumps(metadata, ensure_ascii=False)}\n\n"
+                    "Transcricao:\n"
+                    f"{transcript}"
+                )
+            }
+        ]
+
+        # Append video frames as inline images
+        for frame_path in frames[:20]:
+            parts.append({
+                "inlineData": {
+                    "mimeType": "image/jpeg",
+                    "data": base64.b64encode(frame_path.read_bytes()).decode("ascii"),
+                }
+            })
+
         return {
             "contents": [
                 {
                     "role": "user",
-                    "parts": [
-                        {
-                            "text": (
-                                f"{OPERATIONAL_MINUTES_INSTRUCTIONS}\n\n"
-                                "Nao invente informacoes. Quando responsavel, prazo ou timestamp "
-                                "nao forem citados, use string vazia. Siga as instrucoes do preset "
-                                "informado nos metadados. Retorne somente JSON valido no schema "
-                                "solicitado.\n\n"
-                                "Metadados da reuniao:\n"
-                                f"{json.dumps(metadata, ensure_ascii=False)}\n\n"
-                                "Transcricao:\n"
-                                f"{transcript}"
-                            )
-                        }
-                    ],
+                    "parts": parts,
                 }
             ],
             "generationConfig": {
