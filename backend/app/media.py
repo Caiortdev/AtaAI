@@ -15,6 +15,14 @@ from app.domain import MediaKind, PreparedAudioInfo, UploadedFileInfo
 
 LOCAL_MEDIA_TOOLS_ENABLED = True
 
+# Filtros de áudio aplicados antes da transcrição para melhorar qualidade
+AUDIO_FILTER_CHAIN = ",".join([
+    "highpass=f=80",
+    "lowpass=f=8000",
+    "acompressor=threshold=-20dB:ratio=4:attack=5:release=50:makeup=2dB",
+    "loudnorm=I=-16:TP=-1.5:LRA=11",
+])
+
 
 class MediaProcessingError(Exception):
     pass
@@ -102,7 +110,7 @@ class MediaService:
         ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
         prepared_dir = self.settings.storage_dir / "prepared" / meeting_id
         prepared_dir.mkdir(parents=True, exist_ok=True)
-        target_name = f"{uuid4()}.mp3"
+        target_name = f"{uuid4()}.ogg"
         target_path = prepared_dir / target_name
 
         command = [
@@ -115,8 +123,10 @@ class MediaService:
             "1",
             "-ar",
             "16000",
+            "-af",
+            AUDIO_FILTER_CHAIN,
             "-codec:a",
-            "libmp3lame",
+            "libopus",
             "-b:a",
             "32k",
             str(target_path),
@@ -169,7 +179,7 @@ class MediaService:
             detail = result.stderr.strip() or "Nao foi possivel segmentar o audio para transcricao."
             raise MediaProcessingError(detail)
 
-        chunks = sorted(chunks_dir.glob("chunk-*.wav"))
+        chunks = sorted(chunks_dir.glob("chunk-*.ogg"))
         if not chunks:
             chunks = sorted(chunks_dir.glob(f"chunk-*{extension}"))
         if not chunks:
@@ -192,7 +202,7 @@ class MediaService:
         ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
         prepared_dir = self.settings.storage_dir / "prepared" / meeting_id
         prepared_dir.mkdir(parents=True, exist_ok=True)
-        target_name = f"{uuid4()}.mp3"
+        target_name = f"{uuid4()}.ogg"
         target_path = prepared_dir / target_name
 
         command = [
@@ -209,8 +219,10 @@ class MediaService:
             "1",
             "-ar",
             "16000",
+            "-af",
+            AUDIO_FILTER_CHAIN,
             "-codec:a",
-            "libmp3lame",
+            "libopus",
             "-b:a",
             "32k",
             str(target_path),
@@ -237,7 +249,7 @@ class MediaService:
         ffmpeg = self._require_binary(self.settings.ffmpeg_binary, "FFmpeg")
         prepared_dir = self.settings.storage_dir / "prepared" / meeting_id
         prepared_dir.mkdir(parents=True, exist_ok=True)
-        target_name = f"{uuid4()}.mp3"
+        target_name = f"{uuid4()}.ogg"
         target_path = prepared_dir / target_name
 
         concat_list = chunks_dir / "concat.txt"
@@ -260,8 +272,10 @@ class MediaService:
             "1",
             "-ar",
             "16000",
+            "-af",
+            AUDIO_FILTER_CHAIN,
             "-codec:a",
-            "libmp3lame",
+            "libopus",
             "-b:a",
             "32k",
             str(target_path),
